@@ -11,3 +11,4 @@ dist/
 *.py[cod]
 *.spec
 !unpacksort.spec
+CLAUDE.local.md
