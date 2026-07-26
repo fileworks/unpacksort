@@ -1,0 +1,228 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force a release bump (patch, minor, or major)"
+        required: false
+        type: choice
+        options: ["", patch, minor, major]
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unpacksort-release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: version and tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      released: ${{ steps.release.outputs.released || 'false' }}
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      commit_sha: ${{ steps.release.outputs.commit_sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v9.0.0
+      - name: Install locked release environment
+        run: uv sync --locked --all-groups
+      - name: Verify release baseline
+        run: |
+          git diff --exit-code
+          uv run ruff format --check .
+          uv run ruff check .
+          uv run mypy
+          uv run pytest
+      - name: Determine, commit, and tag the semantic version
+        id: release
+        uses: python-semantic-release/python-semantic-release@v10.6.1
+        with:
+          github_token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+          git_committer_name: "Niklas Büchel"
+          git_committer_email: "niklas.buechel@accso.de"
+          force: ${{ inputs.force }}
+          vcs_release: "false"
+      - name: Upload immutable Python candidates
+        if: steps.release.outputs.released == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-distributions
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  source-e2e:
+    name: source distribution E2E
+    needs: version
+    if: needs.version.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: actions/download-artifact@v8
+        with:
+          name: python-distributions
+          path: dist
+      - name: Install and test the exact wheel
+        shell: bash
+        run: |
+          uv venv --python 3.12 .release-venv
+          wheel="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+          uv pip install --python .release-venv "$wheel"
+          python scripts/installed_e2e.py --command .release-venv/bin/unpacksort
+
+  windows-portable:
+    name: Windows x64 portable E2E
+    needs: version
+    if: needs.version.outputs.released == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          architecture: x64
+      - uses: astral-sh/setup-uv@v9.0.0
+      - name: Build pinned portable executable
+        env:
+          PYTHONHASHSEED: "0"
+          SOURCE_DATE_EPOCH: "315532800"
+        run: |
+          uv sync --locked --all-groups --python 3.12
+          uv run pyinstaller --clean --noconfirm unpacksort.spec
+          uv run python scripts/package_portable.py `
+            --executable dist/unpacksort.exe `
+            --version "${{ needs.version.outputs.version }}" `
+            --output release
+      - name: Smoke-test the unpacked executable
+        shell: pwsh
+        run: |
+          $archive = Get-ChildItem release/*-windows-x64.zip | Select-Object -First 1
+          Expand-Archive $archive.FullName portable-smoke
+          $executable = Get-ChildItem portable-smoke -Recurse -Filter unpacksort.exe |
+            Select-Object -First 1
+          python scripts/installed_e2e.py --command $executable.FullName
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-portable
+          path: release/*-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish immutable release
+    needs: [version, source-e2e, windows-portable]
+    if: needs.version.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: python-distributions
+          path: release-assets/source
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows-portable
+          path: release-assets/portable
+      - name: Verify types, names, version, and portable contents
+        run: >-
+          python scripts/release_assets.py verify
+          --directory release-assets
+          --version "${{ needs.version.outputs.version }}"
+      - name: Create SHA-256 checksums
+        run: >-
+          python scripts/release_assets.py checksums
+          --directory release-assets
+          --output release-assets/SHA256SUMS
+      - name: Publish wheel and sdist through PyPI OIDC
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: release-assets/source
+          attestations: true
+      - name: Create GitHub release only after every artifact E2E
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+        shell: bash
+        run: |
+          gh release create "$TAG" \
+            release-assets/source/* \
+            release-assets/portable/* \
+            release-assets/SHA256SUMS \
+            --verify-tag \
+            --title "unpacksort $VERSION" \
+            --notes "Unsigned Windows executable: verify SHA256SUMS; checksums do not prove publisher identity. See CHANGELOG.md and docs/release.md."
+
+  winget:
+    name: submit observable WinGet update
+    needs: [version, publish]
+    if: needs.version.outputs.released == 'true' && vars.WINGET_SUBMISSION_ENABLED == 'true'
+    runs-on: windows-latest
+    environment: winget
+    steps:
+      - name: Download official WinGetCreate
+        shell: pwsh
+        run: Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+      - name: Generate, validate, and submit update
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+          TAG: ${{ needs.version.outputs.tag }}
+        shell: pwsh
+        run: |
+          $url = "https://github.com/fileworks/unpacksort/releases/download/$env:TAG/unpacksort-$env:VERSION-windows-x64.zip"
+          .\wingetcreate.exe update fileworks.unpacksort `
+            --urls "$url|x64" `
+            --version "$env:VERSION" `
+            --token "$env:WINGET_TOKEN" `
+            --submit
+
+  homebrew:
+    name: queue guarded Homebrew update
+    needs: [version, publish]
+    if: needs.version.outputs.released == 'true' && vars.HOMEBREW_DISPATCH_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: homebrew
+    steps:
+      - name: Dispatch to the serialized hardened tap queue
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+          SOURCE_RUN: ${{ github.run_id }}
+        run: >-
+          gh workflow run bump.yml
+          --repo fileworks/homebrew-tap
+          -f formula=unpacksort
+          -f version="$VERSION"
+          -f source_repository=fileworks/unpacksort
+          -f source_run="$SOURCE_RUN"
