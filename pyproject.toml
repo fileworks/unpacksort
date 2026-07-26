@@ -1,0 +1,119 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "unpacksort"
+version = "0.1.0"
+description = "Safely unpack, deduplicate, classify, and sort nested mail and archive content"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "Niklas Büchel" }]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Communications :: Email",
+  "Topic :: System :: Archiving",
+]
+dependencies = [
+  "click>=8.3.3,<9",
+  "pikepdf>=9.5,<11",
+  "py7zr>=0.22,<2",
+  "typer>=0.16,<1",
+  "zstandard>=0.23,<1",
+]
+
+[project.urls]
+Homepage = "https://github.com/fileworks/unpacksort"
+Documentation = "https://github.com/fileworks/unpacksort/blob/main/docs/manual.md"
+Issues = "https://github.com/fileworks/unpacksort/issues"
+Changelog = "https://github.com/fileworks/unpacksort/blob/main/CHANGELOG.md"
+
+[project.scripts]
+unpacksort = "unpacksort.cli:app"
+
+[dependency-groups]
+dev = [
+  "build==1.3.0",
+  "hypothesis==6.136.6",
+  "mypy==1.17.1",
+  "pip-audit==2.9.0",
+  "pyinstaller==6.15.0",
+  "PyYAML==6.0.3",
+  "pytest==9.0.3",
+  "pytest-cov==6.2.1",
+  "python-semantic-release==10.6.1",
+  "ruff==0.12.5",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/unpacksort"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["build", "dist"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "C901",
+  "COM812",
+  "D203",
+  "D202",
+  "D213",
+  "FBT001",
+  "PERF401",
+  "PLR0911",
+  "PLR0912",
+  "PLR0913",
+  "TC001",
+  "TC002",
+  "TC003",
+  "TRY300",
+  "TRY301",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/**" = ["D103", "EM101", "EM102", "S603", "TRY003"]
+"tests/**" = ["ANN", "D", "INP001", "PLR2004", "S101", "S106", "SLF001"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["unpacksort"]
+mypy_path = "src"
+warn_unreachable = true
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers --cov=unpacksort --cov-report=term-missing --cov-fail-under=90"
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+omit = ["src/unpacksort/__main__.py"]
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+build_command = """
+python -m pip install uv==0.11.18
+uv lock --upgrade-package "$PACKAGE_NAME"
+git add uv.lock
+uv build
+"""
+commit_author = "Niklas Büchel <niklas.buechel@accso.de>"
+commit_message = "chore(release): {version}\n\n- publish immutable release metadata"
+tag_format = "v{version}"
+major_on_zero = false
+
+[tool.semantic_release.changelog]
+mode = "update"
+
+[tool.semantic_release.branches.main]
+match = "main"
+prerelease = false
