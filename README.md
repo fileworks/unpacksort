@@ -58,4 +58,8 @@ uv run mypy
 uv run pytest
 ```
 
+Use an ignored `CLAUDE.local.md` at the repository root for per-clone paths,
+commands, or private preferences. Never store credentials or other secrets
+there.
+
 Licensed under the [MIT License](LICENSE).
