@@ -39,7 +39,7 @@ jobs:
         run: uv run pytest
 
   build:
-    name: build (${{ matrix.os }}, Python ${{ matrix.python }})
+    name: installed wheel (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
