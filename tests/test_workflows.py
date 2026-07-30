@@ -15,8 +15,15 @@ def test_quality_workflow_has_cross_platform_version_and_artifact_gates() -> Non
     workflow = _workflow("quality.yml")
     jobs = workflow["jobs"]
     assert isinstance(jobs, dict)
-    assert set(jobs) == {"quality", "installed-wheel", "dependency-audit"}
-    for job_name in ("quality", "installed-wheel"):
+    # An exact set rather than a subset: a gate that silently disappears is the
+    # failure this test exists to catch, so adding one is a deliberate edit here.
+    assert set(jobs) == {
+        "quality",
+        "build",
+        "dependency-audit",
+        "docs-links",
+    }
+    for job_name in ("quality", "build"):
         job = jobs[job_name]
         matrix = job["strategy"]["matrix"]
         assert matrix["os"] == ["ubuntu-latest", "macos-latest", "windows-latest"]
@@ -31,7 +38,11 @@ def test_release_workflow_publishes_only_after_artifact_e2e() -> None:
     jobs = workflow["jobs"]
     assert isinstance(jobs, dict)
     publish = jobs["publish"]
-    assert set(publish["needs"]) == {"version", "source-e2e", "windows-portable"}
+    assert set(publish["needs"]) == {
+        "release-integrity",
+        "source-e2e",
+        "windows-portable",
+    }
     assert publish["environment"] == "pypi"
     assert publish["permissions"]["id-token"] == "write"
     text = (Path(".github/workflows") / "release.yml").read_text(encoding="utf-8")
