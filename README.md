@@ -1,3 +1,5 @@
+<img src=".github/icon.svg" alt="" width="72" height="72" align="left">
+
 # unpacksort
 
 `unpacksort` safely recovers files from an mbox or a directory, recursively opens
@@ -7,6 +9,24 @@ publishes a deterministic type-grouped result with complete provenance.
 It supports Python 3.12+, ZIP/ZIP64, TAR (plain, gzip, bzip2, xz, and zstandard),
 7z, parser-validated PDFs, and common ZIP application packages. RAR is detected
 and retained as unprocessed; source links and archive links are never followed.
+
+## Status
+
+**Not yet published.** semantic-release has staged the first release and the protected
+release is waiting on PyPI trusted-publisher setup. No PyPI, Homebrew, or WinGet
+release is claimed until those channels exist — the install commands below
+describe the intended routes, not ones you can run today.
+
+## Overview
+
+`unpacksort` recovers files from a mailbox or a directory tree: it opens nested
+archives and attached messages, removes byte-identical duplicates, and publishes
+a deterministic, type-grouped result with a manifest recording where every file
+came from.
+
+Deterministic means the same input produces the same output, every time — which
+is what makes a recovery run something you can check rather than something you
+have to trust.
 
 ## Install
 
@@ -63,3 +83,49 @@ commands, or private preferences. Never store credentials or other secrets
 there.
 
 Licensed under the [MIT License](LICENSE).
+
+## Usage
+
+```console
+unpacksort SOURCE DESTINATION [options]
+```
+
+| Option | Effect |
+|---|---|
+| `--flatten` | One directory per type instead of mirroring the source layout |
+| `--pdf-only` | Extract and validate PDFs, ignore everything else |
+| `--dry-run` | Plan and report without writing anything |
+
+`unpacksort --help` is authoritative.
+
+## Configuration
+
+There is no configuration file. Behaviour is set by flags, and the safety limits
+— extraction depth, expansion ratio, per-file and total size ceilings — are
+compiled in deliberately: a limit a user can raise is a limit an archive bomb can
+raise.
+
+## Troubleshooting
+
+**A RAR archive was not extracted.** RAR is detected and retained unprocessed;
+`unpacksort` does not bundle a RAR implementation.
+
+**The run stopped at a safety limit.** The manifest names which limit and which
+container tripped it. That is the intended behaviour for a suspicious archive.
+
+**A PDF was rejected.** PDFs are parser-validated; a file that cannot be parsed
+is retained as-is rather than published as a valid document.
+
+**The output differs between two runs of the same input.** It should not. That is
+a bug worth reporting, with the two manifests.
+
+## Security
+
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+Parsers run in-process: `unpacksort` bounds extraction and never follows links,
+but it is not a malware scanner or a sandbox. Process hostile data inside an
+additional operating-system sandbox.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

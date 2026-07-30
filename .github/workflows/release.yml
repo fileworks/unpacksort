@@ -20,8 +20,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  version:
-    name: version and tag
+  release-integrity:
+    name: release-integrity
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -69,13 +69,13 @@ jobs:
 
   source-e2e:
     name: source distribution E2E
-    needs: version
-    if: needs.version.outputs.released == 'true'
+    needs: release-integrity
+    if: needs.release-integrity.outputs.released == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.version.outputs.tag }}
+          ref: ${{ needs.release-integrity.outputs.tag }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -94,13 +94,13 @@ jobs:
 
   windows-portable:
     name: Windows x64 portable E2E
-    needs: version
-    if: needs.version.outputs.released == 'true'
+    needs: release-integrity
+    if: needs.release-integrity.outputs.released == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.version.outputs.tag }}
+          ref: ${{ needs.release-integrity.outputs.tag }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -115,7 +115,7 @@ jobs:
           uv run pyinstaller --clean --noconfirm unpacksort.spec
           uv run python scripts/package_portable.py `
             --executable dist/unpacksort.exe `
-            --version "${{ needs.version.outputs.version }}" `
+            --version "${{ needs.release-integrity.outputs.version }}" `
             --output release
       - name: Smoke-test the unpacked executable
         shell: pwsh
@@ -134,8 +134,8 @@ jobs:
 
   publish:
     name: publish immutable release
-    needs: [version, source-e2e, windows-portable]
-    if: needs.version.outputs.released == 'true'
+    needs: [release-integrity, source-e2e, windows-portable]
+    if: needs.release-integrity.outputs.released == 'true'
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -144,7 +144,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.version.outputs.tag }}
+          ref: ${{ needs.release-integrity.outputs.tag }}
       - uses: actions/download-artifact@v8
         with:
           name: python-distributions
@@ -157,7 +157,7 @@ jobs:
         run: >-
           python scripts/release_assets.py verify
           --directory release-assets
-          --version "${{ needs.version.outputs.version }}"
+          --version "${{ needs.release-integrity.outputs.version }}"
       - name: Create SHA-256 checksums
         run: >-
           python scripts/release_assets.py checksums
@@ -171,8 +171,8 @@ jobs:
       - name: Create GitHub release only after every artifact E2E
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.version.outputs.tag }}
-          VERSION: ${{ needs.version.outputs.version }}
+          TAG: ${{ needs.release-integrity.outputs.tag }}
+          VERSION: ${{ needs.release-integrity.outputs.version }}
         shell: bash
         run: |
           gh release create "$TAG" \
@@ -185,8 +185,8 @@ jobs:
 
   winget:
     name: submit observable WinGet update
-    needs: [version, publish]
-    if: needs.version.outputs.released == 'true' && vars.WINGET_SUBMISSION_ENABLED == 'true'
+    needs: [release-integrity, publish]
+    if: needs.release-integrity.outputs.released == 'true' && vars.WINGET_SUBMISSION_ENABLED == 'true'
     runs-on: windows-latest
     environment: winget
     steps:
@@ -196,8 +196,8 @@ jobs:
       - name: Generate, validate, and submit update
         env:
           WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
-          VERSION: ${{ needs.version.outputs.version }}
-          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.release-integrity.outputs.version }}
+          TAG: ${{ needs.release-integrity.outputs.tag }}
         shell: pwsh
         run: |
           $url = "https://github.com/fileworks/unpacksort/releases/download/$env:TAG/unpacksort-$env:VERSION-windows-x64.zip"
@@ -209,15 +209,15 @@ jobs:
 
   homebrew:
     name: queue guarded Homebrew update
-    needs: [version, publish]
-    if: needs.version.outputs.released == 'true' && vars.HOMEBREW_DISPATCH_ENABLED == 'true'
+    needs: [release-integrity, publish]
+    if: needs.release-integrity.outputs.released == 'true' && vars.HOMEBREW_DISPATCH_ENABLED == 'true'
     runs-on: ubuntu-latest
     environment: homebrew
     steps:
       - name: Dispatch to the serialized hardened tap queue
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          VERSION: ${{ needs.version.outputs.version }}
+          VERSION: ${{ needs.release-integrity.outputs.version }}
           SOURCE_RUN: ${{ github.run_id }}
         run: >-
           gh workflow run bump.yml
