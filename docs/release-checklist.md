@@ -3,7 +3,13 @@
 Automated 1.1.0 evidence was recorded from release run
 [`30696525252`](https://github.com/fileworks/unpacksort/actions/runs/30696525252)
 and Homebrew PR
-[`fileworks/homebrew-tap#21`](https://github.com/fileworks/homebrew-tap/pull/21).
+[`fileworks/homebrew-tap#21`](https://github.com/fileworks/homebrew-tap/pull/21)
+plus its functional-test follow-up
+[`#22`](https://github.com/fileworks/homebrew-tap/pull/22). On 2026-08-01,
+every public asset was downloaded again, checksum/type/layout verified, the
+PyPI wheel and sdist attestations were cryptographically verified against
+`fileworks/unpacksort`, and the exact public package passed an isolated pipx
+archive-extraction smoke test.
 Unchecked items still require an external clean host or WinGet acceptance.
 
 Record the release version, tag, workflow run URLs, operator, and results.
@@ -27,7 +33,7 @@ Record the release version, tag, workflow run URLs, operator, and results.
 - [x] Confirm ZIP/ZIP64, TAR compression families, 7z, RAR, encryption,
       corruption, unsafe links/names, limit boundaries, PDF parsing, duplicate
       content, and interruption/resume fixtures.
-- [ ] Install the published version with pipx in a clean environment and repeat
+- [x] Install the published version with pipx in a clean environment and repeat
       the representative fixture.
 
 ## Windows portable
@@ -42,8 +48,9 @@ Record the release version, tag, workflow run URLs, operator, and results.
 - [x] Verify filenames, versions, magic types, portable layout, and checksums.
 - [x] Confirm PyPI OIDC publication and no long-lived token.
 - [x] Confirm GitHub has sdist, wheel, portable ZIP, and `SHA256SUMS`.
-- [ ] Download every asset from the public release and re-run verification.
-- [ ] Confirm no asset was replaced after publication.
+- [x] Download every asset from the public release and re-run verification.
+- [x] Confirm current GitHub asset digests match `SHA256SUMS` and the release
+      assets retain their original publication timestamps.
 
 ## Catalogs
 
@@ -54,3 +61,7 @@ Record the release version, tag, workflow run URLs, operator, and results.
       x64 architecture, identifier, and `unpacksort` alias.
 - [x] Record the Homebrew PR and WinGet bootstrap as the visible external
       follow-up.
+- [ ] Submit and obtain acceptance for the initial `fileworks.unpacksort`
+      WinGet manifest.
+- [ ] After catalog acceptance, enable and verify automated WinGet update
+      submissions as documented in `release.md`.
