@@ -214,15 +214,26 @@ jobs:
     runs-on: ubuntu-latest
     environment: homebrew
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-integrity.outputs.tag }}
       - name: Dispatch to the serialized hardened tap queue
         env:
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          # Reuse the existing owner-scoped release token instead of creating a
+          # second long-lived cross-repository credential.
+          GH_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
           VERSION: ${{ needs.release-integrity.outputs.version }}
           SOURCE_RUN: ${{ github.run_id }}
-        run: >-
-          gh workflow run bump.yml
-          --repo fileworks/homebrew-tap
-          -f formula=unpacksort
-          -f version="$VERSION"
-          -f source_repository=fileworks/unpacksort
-          -f source_run="$SOURCE_RUN"
+          RELEASE_COMMIT: ${{ needs.release-integrity.outputs.commit_sha }}
+        shell: bash
+        run: |
+          lock_url="https://raw.githubusercontent.com/fileworks/unpacksort/$RELEASE_COMMIT/uv.lock"
+          lock_sha256="$(shasum -a 256 uv.lock | cut -d ' ' -f 1)"
+          gh workflow run bump.yml \
+            --repo fileworks/homebrew-tap \
+            -f formula=unpacksort \
+            -f version="$VERSION" \
+            -f source_repository=fileworks/unpacksort \
+            -f source_run="$SOURCE_RUN" \
+            -f lock_url="$lock_url" \
+            -f lock_sha256="$lock_sha256"

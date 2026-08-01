@@ -94,16 +94,18 @@ unpacksort SOURCE DESTINATION [options]
 |---|---|
 | `--flatten` | One directory per type instead of mirroring the source layout |
 | `--pdf-only` | Extract and validate PDFs, ignore everything else |
-| `--dry-run` | Plan and report without writing anything |
+| `--log-file PATH` | Write bounded rotating progress and diagnostics (default: beside destination) |
+| `--verbose` | Include debug diagnostics in the logfile |
 
 `unpacksort --help` is authoritative.
 
 ## Configuration
 
-There is no configuration file. Behaviour is set by flags, and the safety limits
-— extraction depth, expansion ratio, per-file and total size ceilings — are
-compiled in deliberately: a limit a user can raise is a limit an archive bomb can
-raise.
+There is no configuration file. Behaviour and all seven safety limits are set by
+explicit command-line flags; run `unpacksort --help` for their names, defaults,
+and minimum values. Raising a limit is an operator decision and expands the
+resource budget for untrusted input, so scheduled jobs should pin reviewed
+values rather than accept input-controlled arguments.
 
 ## Troubleshooting
 

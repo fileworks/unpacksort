@@ -171,7 +171,23 @@ def test_fingerprint_is_content_based_and_order_independent(tmp_path: Path) -> N
 def test_cli_help_version_and_usage_errors(tmp_path: Path) -> None:
     help_result = runner.invoke(app, ["--help"], terminal_width=160)
     assert help_result.exit_code == 0
-    assert "--max-depth" in unstyle(help_result.stdout)
+    help_text = unstyle(help_result.stdout)
+    for option in (
+        "--max-depth",
+        "--max-members-per-container",
+        "--max-members-run",
+        "--max-member-bytes",
+        "--max-container-bytes",
+        "--max-run-bytes",
+        "--max-expansion-ratio",
+        "--log-file",
+        "--verbose",
+    ):
+        assert option in help_text
+    assert "--dry-run" not in help_text
+    readme = Path("README.md").read_text(encoding="utf-8")
+    assert "--dry-run" not in readme
+    assert "all seven safety limits" in readme
     version_result = runner.invoke(app, ["--version"])
     assert version_result.exit_code == 0
     assert version_result.stdout.startswith("unpacksort ")

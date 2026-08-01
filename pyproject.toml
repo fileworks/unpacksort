@@ -94,6 +94,7 @@ warn_unreachable = true
 addopts = "--strict-config --strict-markers --cov=unpacksort --cov-report=term-missing --cov-fail-under=90"
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = ["scale: opt-in generated high-volume production-path tiers"]
 
 [tool.coverage.run]
 omit = ["src/unpacksort/__main__.py"]

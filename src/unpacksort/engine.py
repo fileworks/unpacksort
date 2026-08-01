@@ -5,8 +5,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sqlite3
 import stat
-from dataclasses import dataclass, field, replace
+import tempfile
+import weakref
+from collections.abc import Callable, Iterable, Iterator
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
@@ -35,8 +39,9 @@ from unpacksort.models import (
     SourceIdentity,
     Status,
 )
-from unpacksort.planner import freeze_plan
+from unpacksort.planner import iter_freeze_plan
 from unpacksort.policy import Accounting, ContainerAccounting, LimitExceededError, Policy
+from unpacksort.progress import NullProgress, ProgressSink
 from unpacksort.reporting import write_outputs
 from unpacksort.safety import portable_text_key, safe_component
 from unpacksort.storage import BlobStore
@@ -49,69 +54,249 @@ class _RecordSink(Protocol):
     def record_container(self, container: ContainerRecord) -> None:
         """Record one container."""
 
+    def record_occurrence_record(self, record: dict[str, Any]) -> None:
+        """Record one serialized occurrence."""
 
-@dataclass(slots=True)
+    def record_container_record(self, record: dict[str, Any]) -> None:
+        """Record one serialized container."""
+
+
 class _RecordBuffer:
-    occurrences: list[Occurrence] = field(default_factory=list)
-    containers: list[ContainerRecord] = field(default_factory=list)
+    """Disk-backed tentative subtree preserving all-or-nothing expansion."""
+
+    def __init__(self) -> None:
+        self._connection = sqlite3.connect("")
+        self._connection.execute(
+            "CREATE TABLE records ("
+            "ordinal INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "kind TEXT NOT NULL, payload TEXT NOT NULL)"
+        )
 
     def record_occurrence(self, occurrence: Occurrence) -> None:
-        self.occurrences.append(occurrence)
+        self.record_occurrence_record(occurrence.to_record())
 
     def record_container(self, container: ContainerRecord) -> None:
-        self.containers.append(container)
+        self.record_container_record(container.to_record())
+
+    def record_occurrence_record(self, record: dict[str, Any]) -> None:
+        self._record("occurrence", record)
+
+    def record_container_record(self, record: dict[str, Any]) -> None:
+        self._record("container", record)
+
+    def _record(self, kind: str, record: dict[str, Any]) -> None:
+        self._connection.execute(
+            "INSERT INTO records(kind, payload) VALUES (?, ?)",
+            (kind, json.dumps(record, sort_keys=True, separators=(",", ":"))),
+        )
 
     def flush(self, target: _RecordSink) -> None:
-        for container in self.containers:
-            target.record_container(container)
-        for occurrence in self.occurrences:
-            target.record_occurrence(occurrence)
+        try:
+            rows = self._connection.execute(
+                "SELECT kind, payload FROM records "
+                "ORDER BY CASE kind WHEN 'container' THEN 0 ELSE 1 END, ordinal"
+            )
+            for kind, payload in rows:
+                record = json.loads(str(payload))
+                if kind == "container":
+                    target.record_container_record(record)
+                else:
+                    target.record_occurrence_record(record)
+        finally:
+            self.close()
+
+    def close(self) -> None:
+        self._connection.close()
+
+
+class _SourceInventory:
+    """One disk-backed traversal reused by fingerprinting and discovery."""
+
+    def __init__(
+        self,
+        source: Path,
+        *,
+        on_file: Callable[[], object] | None = None,
+    ) -> None:
+        self._path: str | None = None
+        self._connection: sqlite3.Connection | None = None
+        if source.is_file():
+            self.identity = fingerprint_source(source, on_file=on_file)
+            self._finalizer = weakref.finalize(self, _cleanup_inventory, None, None)
+            return
+        descriptor, self._path = tempfile.mkstemp(
+            prefix="unpacksort-source-",
+            suffix=".sqlite",
+        )
+        os.close(descriptor)
+        self._connection = sqlite3.connect(self._path)
+        self._connection.execute(
+            "CREATE TABLE entries ("
+            "ordinal INTEGER PRIMARY KEY, "
+            "path TEXT NOT NULL, relative_path TEXT NOT NULL, "
+            "ancestry TEXT NOT NULL, unsafe_reason TEXT)"
+        )
+        digest = hashlib.sha256(b"directory\0")
+        for ordinal, (candidate, relative, ancestry, unsafe_reason) in enumerate(
+            _walk_directory(source)
+        ):
+            digest.update(relative.encode("utf-8", "surrogatepass"))
+            digest.update(b"\0")
+            if unsafe_reason is not None:
+                digest.update(unsafe_reason.value.encode())
+            else:
+                try:
+                    _update_file_digest(digest, candidate)
+                    if on_file is not None:
+                        on_file()
+                except OSError:
+                    digest.update(Reason.UNREADABLE.value.encode())
+                    try:
+                        metadata = candidate.stat(follow_symlinks=False)
+                    except OSError:
+                        pass
+                    else:
+                        digest.update(f"{metadata.st_size}:{metadata.st_mtime_ns}".encode())
+            self._connection.execute(
+                "INSERT INTO entries("
+                "ordinal, path, relative_path, ancestry, unsafe_reason"
+                ") VALUES (?, ?, ?, ?, ?)",
+                (
+                    ordinal,
+                    str(candidate),
+                    relative,
+                    json.dumps(
+                        [
+                            {
+                                "kind": node.kind,
+                                "identifier": node.identifier,
+                                "original_name": node.original_name,
+                            }
+                            for node in ancestry
+                        ],
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
+                    None if unsafe_reason is None else unsafe_reason.value,
+                ),
+            )
+        self._connection.commit()
+        self.identity = SourceIdentity("directory", source.name, digest.hexdigest())
+        self._finalizer = weakref.finalize(
+            self,
+            _cleanup_inventory,
+            self._connection,
+            self._path,
+        )
+
+    def entries(
+        self,
+    ) -> Iterator[tuple[Path, str, tuple[AncestryNode, ...], Reason | None]]:
+        """Stream the captured directory inventory in source order."""
+
+        if self._connection is None:
+            return
+        rows = self._connection.execute(
+            "SELECT path, relative_path, ancestry, unsafe_reason FROM entries ORDER BY ordinal"
+        )
+        for path, relative, ancestry_payload, unsafe_reason in rows:
+            ancestry = tuple(
+                AncestryNode(
+                    str(item["kind"]),
+                    str(item["identifier"]),
+                    (None if item.get("original_name") is None else str(item["original_name"])),
+                )
+                for item in json.loads(str(ancestry_payload))
+            )
+            yield (
+                Path(str(path)),
+                str(relative),
+                ancestry,
+                None if unsafe_reason is None else Reason(str(unsafe_reason)),
+            )
+
+    def close(self) -> None:
+        """Close and remove the run-local inventory."""
+
+        self._finalizer()
+        self._connection = None
+        self._path = None
+
+
+def _cleanup_inventory(
+    connection: sqlite3.Connection | None,
+    path: str | None,
+) -> None:
+    if connection is not None:
+        connection.close()
+    if path is not None:
+        Path(path).unlink(missing_ok=True)
 
 
 class Processor:
     """Execute one deterministic destination-local run."""
 
-    def __init__(self, source: Path, destination: Path, policy: Policy) -> None:
+    def __init__(
+        self,
+        source: Path,
+        destination: Path,
+        policy: Policy,
+        *,
+        progress: ProgressSink | None = None,
+    ) -> None:
         """Prepare a run without mutating its destination."""
         self.source = source
         self.destination = destination
         self.policy = policy
+        self.progress = progress or NullProgress()
         self.accounting = Accounting(policy)
-        self.source_identity = fingerprint_source(source)
+        self.progress.phase("fingerprint")
+        self._inventory = _SourceInventory(source, on_file=self.progress.advance)
+        self.source_identity = self._inventory.identity
 
     def run(self) -> tuple[Path, Path, ExitOutcome]:
         """Discover or resume, freeze, publish, and commit final reports."""
 
         self.destination.mkdir(parents=True, exist_ok=True)
-        with Journal(self.destination) as journal:
-            journal.prepare(self.source_identity, self.policy, tool_version=__version__)
-            store = BlobStore(journal)
-            if journal.phase == "discovery":
-                self._discover(journal, store)
-                journal.set_accounting(
-                    members=self.accounting.members,
-                    expanded_bytes=self.accounting.expanded_bytes,
+        try:
+            with Journal(self.destination) as journal:
+                journal.prepare(self.source_identity, self.policy, tool_version=__version__)
+                store = BlobStore(journal)
+                if journal.phase == "discovery":
+                    self.progress.phase("discovery")
+                    self._discover(journal, store)
+                    journal.set_accounting(
+                        members=self.accounting.members,
+                        expanded_bytes=self.accounting.expanded_bytes,
+                    )
+                    self.progress.phase("plan")
+                    journal.freeze(
+                        iter_freeze_plan(
+                            journal.iter_occurrence_records(),
+                            self.policy,
+                        )
+                    )
+                else:
+                    self.accounting.members, self.accounting.expanded_bytes = journal.accounting()
+                self.progress.phase("publish", total=journal.plan_count())
+                self._publish(journal, store, journal.iter_plan_records())
+                self.progress.phase("report")
+                manifest, report, outcome = write_outputs(
+                    self.destination,
+                    source={
+                        "fingerprint": self.source_identity.fingerprint,
+                        "kind": self.source_identity.kind,
+                        "root_name": self.source_identity.root_name,
+                    },
+                    policy=self.policy,
+                    accounting=self.accounting,
+                    containers=journal.iter_container_records(),
+                    plan=journal.iter_plan_records(),
                 )
-                plan = freeze_plan(journal.occurrence_records(), self.policy)
-                journal.freeze(plan)
-            else:
-                plan = journal.plan_records()
-                self.accounting.members, self.accounting.expanded_bytes = journal.accounting()
-            self._publish(journal, store, plan)
-            manifest, report, outcome = write_outputs(
-                self.destination,
-                source={
-                    "fingerprint": self.source_identity.fingerprint,
-                    "kind": self.source_identity.kind,
-                    "root_name": self.source_identity.root_name,
-                },
-                policy=self.policy,
-                accounting=self.accounting,
-                containers=journal.container_records(),
-                plan=plan,
-            )
-            journal.complete("partial" if outcome == ExitOutcome.PARTIAL else "complete")
-            return manifest, report, outcome
+                journal.complete("partial" if outcome == ExitOutcome.PARTIAL else "complete")
+                return manifest, report, outcome
+        finally:
+            self._inventory.close()
 
     def _discover(self, journal: Journal, store: BlobStore) -> None:
         if self.source.is_file():
@@ -124,7 +309,8 @@ class Processor:
                     ancestor_digests=frozenset(),
                 )
             return
-        for path, relative_path, ancestry, unsafe_reason in _walk_directory(self.source):
+        for path, relative_path, ancestry, unsafe_reason in self._inventory.entries():
+            self.progress.advance()
             if unsafe_reason is not None:
                 self._record_failure(
                     journal,
@@ -364,6 +550,7 @@ class Processor:
             return
         archive_node = AncestryNode("archive", logical_name, logical_name)
         subtree = _RecordBuffer()
+        self.progress.phase("expand", total=len(members))
         try:
             for member in members:
                 member_path = PurePosixPath(member.name.replace("\\", "/"))
@@ -396,9 +583,13 @@ class Processor:
                     diagnostics=(),
                     budgets=(*budgets, container_budget),
                 )
+                self.progress.advance()
         except ContainerFailureError as error:
+            self.progress.phase("discovery")
             if error.owner != container_id:
+                subtree.close()
                 raise
+            subtree.close()
             self._container_failure(
                 journal,
                 blob,
@@ -424,6 +615,7 @@ class Processor:
             )
         )
         subtree.flush(journal)
+        self.progress.phase("discovery")
 
     def _process_mail_container(
         self,
@@ -482,6 +674,7 @@ class Processor:
         active_budgets = (*budgets, container_budget)
         subtree = _RecordBuffer()
         leaf_count = 0
+        self.progress.phase("expand")
         try:
             if is_mbox:
                 leaves = iter_mbox(blob.path)
@@ -508,9 +701,13 @@ class Processor:
                     source_ancestry=ancestry if is_mbox else (),
                     budgets=active_budgets,
                 )
+                self.progress.advance()
         except ContainerFailureError as error:
+            self.progress.phase("discovery")
             if error.owner != container_id:
+                subtree.close()
                 raise
+            subtree.close()
             self._container_failure(
                 journal,
                 blob,
@@ -536,6 +733,7 @@ class Processor:
             ),
         )
         subtree.flush(journal)
+        self.progress.phase("discovery")
 
     def _container_failure(
         self,
@@ -632,6 +830,7 @@ class Processor:
         diagnostics: tuple[Diagnostic, ...] = (),
         metadata: dict[str, str] | None = None,
     ) -> None:
+        self.progress.failed()
         detection = DetectionResult(
             "application/octet-stream",
             Group.ARCHIVES_UNPROCESSED,
@@ -754,9 +953,10 @@ class Processor:
         self,
         journal: Journal,
         store: BlobStore,
-        plan: list[dict[str, Any]],
+        plan: Iterable[dict[str, Any]],
     ) -> None:
         for record in plan:
+            self.progress.advance()
             if record.get("canonical_occurrence_id") != record["occurrence_id"]:
                 continue
             relative = record.get("canonical_path")
@@ -773,9 +973,14 @@ class Processor:
             else:
                 store.publish(Blob(str(digest), int(size), blob_path), destination)
             journal.mark_published(str(record["occurrence_id"]))
+            self.progress.committed()
 
 
-def fingerprint_source(path: Path) -> SourceIdentity:
+def fingerprint_source(
+    path: Path,
+    *,
+    on_file: Callable[[], object] | None = None,
+) -> SourceIdentity:
     """Hash deterministic source identities and content before journal reuse."""
 
     digest = hashlib.sha256()
@@ -783,6 +988,8 @@ def fingerprint_source(path: Path) -> SourceIdentity:
         digest.update(b"mbox\0")
         digest.update(path.name.encode("utf-8", "surrogatepass"))
         _update_file_digest(digest, path)
+        if on_file is not None:
+            on_file()
         return SourceIdentity("mbox", path.name, digest.hexdigest())
     digest.update(b"directory\0")
     for candidate, relative, _ancestry, unsafe_reason in _walk_directory(path):
@@ -793,6 +1000,8 @@ def fingerprint_source(path: Path) -> SourceIdentity:
         else:
             try:
                 _update_file_digest(digest, candidate)
+                if on_file is not None:
+                    on_file()
             except OSError:
                 digest.update(Reason.UNREADABLE.value.encode())
                 try:
@@ -806,10 +1015,11 @@ def fingerprint_source(path: Path) -> SourceIdentity:
 
 def _walk_directory(
     root: Path,
-) -> list[tuple[Path, str, tuple[AncestryNode, ...], Reason | None]]:
-    found: list[tuple[Path, str, tuple[AncestryNode, ...], Reason | None]] = []
-
-    def visit(directory: Path, relative_parent: PurePosixPath) -> None:
+) -> Iterator[tuple[Path, str, tuple[AncestryNode, ...], Reason | None]]:
+    def visit(
+        directory: Path,
+        relative_parent: PurePosixPath,
+    ) -> Iterator[tuple[Path, str, tuple[AncestryNode, ...], Reason | None]]:
         try:
             with os.scandir(directory) as scanner:
                 entries = sorted(
@@ -826,7 +1036,7 @@ def _walk_directory(
                 for component in relative_parent.parent.parts
                 if component not in {"", "."}
             )
-            found.append((directory, relative_text, ancestry, Reason.UNREADABLE))
+            yield (directory, relative_text, ancestry, Reason.UNREADABLE)
             return
         for entry in entries:
             relative = relative_parent / entry.name
@@ -840,21 +1050,20 @@ def _walk_directory(
                 entry_stat = entry.stat(follow_symlinks=False)
                 mode = entry_stat.st_mode
             except OSError:
-                found.append((Path(entry.path), relative_text, ancestry, Reason.UNREADABLE))
+                yield (Path(entry.path), relative_text, ancestry, Reason.UNREADABLE)
                 continue
             if (
                 stat.S_ISLNK(mode)
                 or bool(getattr(entry_stat, "st_reparse_tag", 0))
                 or not (stat.S_ISREG(mode) or stat.S_ISDIR(mode))
             ):
-                found.append((Path(entry.path), relative_text, ancestry, Reason.UNSAFE_ENTRY))
+                yield (Path(entry.path), relative_text, ancestry, Reason.UNSAFE_ENTRY)
             elif stat.S_ISDIR(mode):
-                visit(Path(entry.path), relative)
+                yield from visit(Path(entry.path), relative)
             else:
-                found.append((Path(entry.path), relative_text, ancestry, None))
+                yield (Path(entry.path), relative_text, ancestry, None)
 
-    visit(root, PurePosixPath())
-    return found
+    yield from visit(root, PurePosixPath())
 
 
 def _update_file_digest(digest: DigestWriter, path: Path) -> None:
