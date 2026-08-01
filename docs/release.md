@@ -128,8 +128,9 @@ python scripts/render_winget.py \
 ```
 
 Validate the result with current `wingetcreate` and submit the first package
-through a reviewed manual WinGet PR. The identity is not reserved until
-Microsoft accepts it.
+through a reviewed manual WinGet PR. Version 1.1.0 was submitted in
+[`microsoft/winget-pkgs#410897`](https://github.com/microsoft/winget-pkgs/pull/410897).
+The identity is not reserved until Microsoft accepts that PR.
 
 After bootstrap acceptance, create the protected `winget` environment, add the
 dedicated `WINGET_TOKEN`, and set repository variable
