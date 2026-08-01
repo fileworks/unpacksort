@@ -132,15 +132,13 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  publish:
-    name: publish immutable release
+  prepare-release:
+    name: assemble immutable release assets
     needs: [release-integrity, source-e2e, windows-portable]
     if: needs.release-integrity.outputs.released == 'true'
     runs-on: ubuntu-latest
-    environment: pypi
     permissions:
-      contents: write
-      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -163,11 +161,27 @@ jobs:
           python scripts/release_assets.py checksums
           --directory release-assets
           --output release-assets/SHA256SUMS
-      - name: Publish wheel and sdist through PyPI OIDC
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Upload assembled release assets
+        uses: actions/upload-artifact@v7
         with:
-          packages-dir: release-assets/source
-          attestations: true
+          name: release-assets
+          path: release-assets
+          if-no-files-found: error
+          retention-days: 7
+
+  github-release:
+    name: publish GitHub Release
+    needs: [release-integrity, prepare-release]
+    if: needs.release-integrity.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    environment: github-release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-assets
+          path: release-assets
       - name: Create GitHub release only after every artifact E2E
         env:
           GH_TOKEN: ${{ github.token }}
@@ -183,9 +197,29 @@ jobs:
             --title "unpacksort $VERSION" \
             --notes "Unsigned Windows executable: verify SHA256SUMS; checksums do not prove publisher identity. See CHANGELOG.md and docs/release.md."
 
+  pypi:
+    name: publish PyPI distributions
+    needs: [release-integrity, github-release]
+    if: needs.release-integrity.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-assets
+          path: release-assets
+      - name: Publish wheel and sdist through PyPI OIDC
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: release-assets/source
+          attestations: true
+
   winget:
     name: submit observable WinGet update
-    needs: [release-integrity, publish]
+    needs: [release-integrity, github-release]
     if: needs.release-integrity.outputs.released == 'true' && vars.WINGET_SUBMISSION_ENABLED == 'true'
     runs-on: windows-latest
     environment: winget
@@ -209,7 +243,7 @@ jobs:
 
   homebrew:
     name: queue guarded Homebrew update
-    needs: [release-integrity, publish]
+    needs: [release-integrity, pypi]
     if: needs.release-integrity.outputs.released == 'true' && vars.HOMEBREW_DISPATCH_ENABLED == 'true'
     runs-on: ubuntu-latest
     environment: homebrew

@@ -38,18 +38,23 @@ def test_release_workflow_publishes_only_after_artifact_e2e() -> None:
     workflow = _workflow("release.yml")
     jobs = workflow["jobs"]
     assert isinstance(jobs, dict)
-    publish = jobs["publish"]
-    assert set(publish["needs"]) == {
+    prepare = jobs["prepare-release"]
+    assert set(prepare["needs"]) == {
         "release-integrity",
         "source-e2e",
         "windows-portable",
     }
-    assert publish["environment"] == "pypi"
-    assert publish["permissions"]["id-token"] == "write"
+    assert "environment" not in prepare
+    assert jobs["github-release"]["environment"] == "github-release"
+    assert jobs["pypi"]["environment"] == "pypi"
+    assert jobs["homebrew"]["environment"] == "homebrew"
+    assert jobs["winget"]["environment"] == "winget"
+    assert jobs["pypi"]["permissions"]["id-token"] == "write"
     text = (Path(".github/workflows") / "release.yml").read_text(encoding="utf-8")
     assert 'vcs_release: "false"' in text
     assert "gh release create" in text
     assert text.index("scripts/installed_e2e.py") < text.index("gh release create")
+    assert text.index("gh release create") < text.index("pypa/gh-action-pypi-publish@release/v1")
     assert "fileworks.unpacksort" in text
     assert "HOMEBREW_DISPATCH_ENABLED" in text
 

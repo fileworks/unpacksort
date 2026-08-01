@@ -35,8 +35,12 @@ least-privilege everywhere else.
 `release.yml` first runs the complete gate, then Python Semantic Release stamps
 the version, updates `CHANGELOG.md`, creates the release commit, and pushes the
 tag without creating a GitHub Release yet. Source/wheel and Windows portable
-jobs test their exact candidates. Only after both succeed does the publish job
-upload to PyPI and create the GitHub Release with all files and `SHA256SUMS`.
+jobs test their exact candidates. Only after both succeed does the workflow
+assemble one immutable asset set, publish the GitHub Release through the
+`github-release` environment, publish the same Python distributions through
+the `pypi` environment, and dispatch the formula through `homebrew`. GitHub
+therefore shows Releases for user-facing versions and Deployments for each
+protected publication boundary.
 
 ## PyPI OIDC
 
