@@ -77,12 +77,17 @@ Run the representative E2E fixture and compare the installed version to the tag.
 
 ## GitHub and Windows portable assets
 
-Every GitHub Release contains exactly:
+Every GitHub Release contains these four required product assets:
 
 - `unpacksort-VERSION.tar.gz`
 - `unpacksort-VERSION-py3-none-any.whl`
 - `unpacksort-VERSION-windows-x64.zip`
 - `SHA256SUMS`
+
+Trusted PyPI publishing also emits a `.publish.attestation` for the wheel and
+sdist. These provenance records are expected security metadata; they are not
+installable product artifacts and are intentionally not listed in
+`SHA256SUMS`.
 
 The ZIP has one nested executable:
 
@@ -134,7 +139,9 @@ python scripts/render_winget.py \
 Validate the result with current `wingetcreate` and submit the first package
 through a reviewed manual WinGet PR. Version 1.1.0 was submitted in
 [`microsoft/winget-pkgs#410897`](https://github.com/microsoft/winget-pkgs/pull/410897).
-The identity is not reserved until Microsoft accepts that PR.
+Microsoft's automated manifest validation passed on 2026-08-01. The identity is
+not reserved until Microsoft accepts that PR; the remaining account-owner CLA
+attestation is a legal declaration and therefore cannot be delegated to CI.
 
 After bootstrap acceptance, create the protected `winget` environment, add the
 dedicated `WINGET_TOKEN`, and set repository variable

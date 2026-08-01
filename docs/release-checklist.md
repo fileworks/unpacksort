@@ -12,7 +12,10 @@ PyPI wheel and sdist attestations were cryptographically verified against
 archive-extraction smoke test.
 The initial WinGet manifest is under review in
 [`microsoft/winget-pkgs#410897`](https://github.com/microsoft/winget-pkgs/pull/410897).
-Unchecked items still require an external clean host or WinGet acceptance.
+Microsoft's validation pipeline accepted the manifest on 2026-08-01. The
+remaining gates are moderator approval and the account owner's Microsoft CLA
+attestation. That legal declaration cannot be automated or made by a release
+workflow.
 
 Record the release version, tag, workflow run URLs, operator, and results.
 
@@ -65,5 +68,7 @@ Record the release version, tag, workflow run URLs, operator, and results.
       follow-up.
 - [ ] Obtain acceptance for the submitted initial `fileworks.unpacksort`
       [WinGet manifest](https://github.com/microsoft/winget-pkgs/pull/410897).
+      The manifest validation passed; the PR is waiting for the account owner's
+      CLA declaration and Microsoft moderator approval.
 - [ ] After catalog acceptance, enable and verify automated WinGet update
       submissions as documented in `release.md`.
