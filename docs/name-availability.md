@@ -1,21 +1,20 @@
 # Name availability record
 
-The exact name `unpacksort` was rechecked on 2026-07-26 immediately before
-repository creation.
+The exact name `unpacksort` was rechecked before repository creation on
+2026-07-26 and again at the first public release on 2026-08-01.
 
 | Channel | Exact identifier | Result |
 | --- | --- | --- |
-| GitHub | `fileworks/unpacksort` | No repository; reserved by creation |
-| PyPI | `unpacksort` | No project |
-| Homebrew core | `unpacksort` | No formula |
+| GitHub | `fileworks/unpacksort` | Reserved; v1.1.0 published |
+| PyPI | `unpacksort` | Reserved; 1.1.0 published with trusted publishing |
+| Homebrew tap | `fileworks/tap/unpacksort` | Reserved; 1.1.0 formula published |
 | WinGet | `fileworks.unpacksort` | No manifest |
 | npm | `unpacksort` | No package |
 | crates.io | `unpacksort` | No crate |
 | RubyGems | `unpacksort` | No gem |
 | Go discovery | `unpacksort` exact term/module | No exact module |
 
-A broader exact-quoted web screen also returned no result. These results are
-dated evidence, not reservations. The GitHub repository was reserved on the same
-date. PyPI trusted publishing, the Homebrew formula, and the WinGet identity are
-reserved only by their first accepted publication; automation must recheck them
-at that gate and stop on any collision.
+A broader exact-quoted web screen also returned no conflicting project. These
+are dated observations. GitHub, PyPI, and the tap are now reserved by accepted
+publication. The WinGet identity is not reserved until Microsoft accepts the
+first manifest; automation must stop on any collision.

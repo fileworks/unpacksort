@@ -12,10 +12,10 @@ and retained as unprocessed; source links and archive links are never followed.
 
 ## Status
 
-**Not yet published.** semantic-release has staged the first release and the protected
-release is waiting on PyPI trusted-publisher setup. No PyPI, Homebrew, or WinGet
-release is claimed until those channels exist — the install commands below
-describe the intended routes, not ones you can run today.
+**Published.** Version 1.1.0 is available from PyPI and the official GitHub
+Release, including the unsigned Windows x64 portable ZIP. The Homebrew formula
+is available from `fileworks/tap`. WinGet is the only distribution identity
+still awaiting its first accepted catalog submission.
 
 ## Overview
 
@@ -34,11 +34,12 @@ have to trust.
 pipx install unpacksort
 ```
 
-Future releases also provide `brew install fileworks/tap/unpacksort`, a Windows
-x64 portable ZIP, and `winget install fileworks.unpacksort`. Initial executable
-artifacts are unsigned and can trigger an operating-system trust prompt. Verify
-the published SHA-256 checksum, while remembering that a checksum detects damage
-but does not independently prove who published a file.
+Alternatively run `brew install fileworks/tap/unpacksort`, or download the
+Windows x64 portable ZIP from the official GitHub Release. The executable is
+unsigned and can trigger an operating-system trust prompt. Verify the published
+SHA-256 checksum, while remembering that a checksum detects damage but does not
+independently prove who published a file. `winget install fileworks.unpacksort`
+will become available only after Microsoft accepts the initial manifest.
 
 ## Quick start
 

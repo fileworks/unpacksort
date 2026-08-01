@@ -40,7 +40,7 @@ upload to PyPI and create the GitHub Release with all files and `SHA256SUMS`.
 
 ## PyPI OIDC
 
-Create a pending trusted publisher while `unpacksort` is still unclaimed:
+The active trusted publisher is:
 
 | Field | Value |
 | --- | --- |
@@ -50,18 +50,17 @@ Create a pending trusted publisher while `unpacksort` is still unclaimed:
 | Workflow | `release.yml` |
 | Environment | `pypi` |
 
-A pending publisher does not reserve the name until first publication. Configure
-the `pypi` GitHub environment with Niklas Büchel as required reviewer and tag/
-protected-branch deployment rules. The publish job has job-local
-`id-token: write` and uses the PyPA publisher action; do not configure a
-long-lived PyPI token.
+Version 1.1.0 reserved the project through this publisher. The `pypi` GitHub
+environment accepts deployments from protected `main`; it has no obsolete
+self-approval gate. The publish job has job-local `id-token: write` and uses the
+PyPA publisher action; do not configure a long-lived PyPI token.
 
-Before enabling the initial run:
+For every release:
 
-1. Repeat and record the name screen.
-2. Register the pending publisher and protected `pypi` environment.
-3. Confirm the candidate wheel installs with pipx in a clean environment.
-4. Confirm the GitHub tag/version does not already exist.
+1. Confirm the trusted publisher still names this repository, workflow, and
+   environment.
+2. Confirm the candidate wheel installs in the source-distribution E2E job.
+3. Confirm the GitHub tag/version does not already exist.
 
 After publication:
 
@@ -141,21 +140,19 @@ retryable follow-up. Never replace those assets to retry the catalog.
 
 ## Homebrew bootstrap and updates
 
-The `fileworks/homebrew-tap` serialized queue and least-privilege hardening must
-support `unpacksort` before dispatch is enabled. Until then,
-`HOMEBREW_DISPATCH_ENABLED` remains absent/false.
+The reviewed bootstrap landed in
+[`fileworks/homebrew-tap#21`](https://github.com/fileworks/homebrew-tap/pull/21).
+It pins the published sdist and the complete cross-platform wheel inventory from
+the immutable release lock. The tap CI audits Linux/macOS and performs a real
+source install plus inventory test on macOS.
 
-After the first immutable PyPI release, open a reviewed manual tap PR that:
+The protected `homebrew` environment and
+`HOMEBREW_DISPATCH_ENABLED=true` are active. Each release sends the exact
+version, source repository/run, and immutable `uv.lock` URL/SHA-256 to the tap's
+durable serialized queue. Existing formulas update monotonically; an absent
+formula fails closed as `bootstrap_required`.
 
-1. adds `Formula/unpacksort.rb` using `Language::Python::Virtualenv`;
-2. pins the sdist URL and SHA-256;
-3. lists every runtime resource with an immutable URL and SHA-256;
-4. performs no undeclared install-time dependency resolution;
-5. generates a ZIP fixture in `test do`, invokes `unpacksort`, and verifies both
-   an output payload and manifest provenance;
-6. extends the tap queue's strict formula allowlist and CI matrix.
-
-Use Homebrew's resource update tooling, then inspect every resource and run:
+To verify or recover the channel manually:
 
 ```console
 brew audit --strict fileworks/tap/unpacksort
@@ -163,12 +160,6 @@ brew style Formula/unpacksort.rb
 brew install --build-from-source fileworks/tap/unpacksort
 brew test fileworks/tap/unpacksort
 ```
-
-Once that PR lands, configure protected environment `homebrew`, a dedicated
-token able only to dispatch `fileworks/homebrew-tap`, and
-`HOMEBREW_DISPATCH_ENABLED=true`. The source workflow sends the exact version,
-source repository, and source run to the tap's durable serialized queue. Initial
-creation remains distinct from later existing-formula bumps.
 
 ## Rollback and channel failures
 
