@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Annotated
 
@@ -10,10 +11,18 @@ import typer
 from unpacksort import __version__
 from unpacksort.engine import Processor
 from unpacksort.journal import StateConflictError
+from unpacksort.logging_config import configure_logging
 from unpacksort.mail import is_confirmed_mbox
 from unpacksort.models import ExitOutcome
 from unpacksort.policy import GIB, Policy
+from unpacksort.progress import Progress
 from unpacksort.safety import paths_alias
+
+_SAFETY_HELP = (
+    "Safety overrides: --max-depth, --max-members-per-container, "
+    "--max-members-run, --max-member-bytes, --max-container-bytes, "
+    "--max-run-bytes, --max-expansion-ratio."
+)
 
 app = typer.Typer(
     add_completion=False,
@@ -29,7 +38,7 @@ def _version(value: bool) -> None:
         raise typer.Exit
 
 
-@app.command()
+@app.command(epilog=_SAFETY_HELP)
 def main(
     source: Annotated[
         Path,
@@ -76,6 +85,18 @@ def main(
         float,
         typer.Option(min=0.001, help="Maximum declared or observed expansion ratio."),
     ] = 1_000.0,
+    log_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--log-file",
+            envvar="UNPACKSORT_LOG_FILE",
+            help="Rotating logfile (default: beside the destination).",
+        ),
+    ] = None,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="Include debug diagnostics in the logfile."),
+    ] = False,
     version: Annotated[
         bool,
         typer.Option("--version", callback=_version, is_eager=True, help="Show the version."),
@@ -85,6 +106,9 @@ def main(
 
     del version
     try:
+        logfile = log_file or destination.parent / "unpacksort.log"
+        configure_logging(logfile, verbose=verbose)
+        logging.getLogger(__name__).info("unpacksort started; logfile=%s", logfile)
         policy = Policy(
             layout="flatten" if flatten else "hierarchy",
             pdf_only=pdf_only,
@@ -102,7 +126,13 @@ def main(
         typer.echo(f"input error: {error}", err=True)
         raise typer.Exit(ExitOutcome.USAGE) from error
     try:
-        manifest, report, outcome = Processor(source, destination, policy).run()
+        with Progress() as progress:
+            manifest, report, outcome = Processor(
+                source,
+                destination,
+                policy,
+                progress=progress,
+            ).run()
     except StateConflictError as error:
         typer.echo(f"state conflict: {error}", err=True)
         raise typer.Exit(ExitOutcome.CONFLICT) from error
@@ -118,6 +148,12 @@ def main(
     typer.echo(f"outcome={'partial' if outcome is ExitOutcome.PARTIAL else 'complete'}")
     if outcome is ExitOutcome.PARTIAL:
         typer.echo(f"partial success; inspect stable reasons in {report}", err=True)
+    logging.getLogger(__name__).info(
+        "unpacksort completed outcome=%s manifest=%s report=%s",
+        "partial" if outcome is ExitOutcome.PARTIAL else "complete",
+        manifest,
+        report,
+    )
     raise typer.Exit(outcome)
 
 

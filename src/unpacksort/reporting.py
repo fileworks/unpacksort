@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from collections import Counter
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,7 @@ from unpacksort.models import ExitOutcome, Status
 from unpacksort.policy import Accounting, Policy
 
 
-def outcome_for(plan: list[dict[str, Any]]) -> ExitOutcome:
+def outcome_for(plan: Iterable[dict[str, Any]]) -> ExitOutcome:
     """Derive success versus durable partial success."""
 
     if any(record["status"] == Status.UNPROCESSED.value for record in plan):
@@ -26,12 +27,15 @@ def write_outputs(
     source: dict[str, str],
     policy: Policy,
     accounting: Accounting,
-    containers: list[dict[str, Any]],
-    plan: list[dict[str, Any]],
+    containers: Iterable[dict[str, Any]],
+    plan: Iterable[dict[str, Any]],
 ) -> tuple[Path, Path, ExitOutcome]:
     """Atomically publish deterministic JSONL and text result contracts."""
 
-    outcome = outcome_for(plan)
+    outcome = ExitOutcome.SUCCESS
+    statuses: Counter[str] = Counter()
+    groups: Counter[str] = Counter()
+    reasons: Counter[str] = Counter()
     run_record = {
         "record_type": "run",
         "schema_version": 1,
@@ -51,32 +55,33 @@ def write_outputs(
             "policy_version": policy.policy_version,
         },
     }
-    manifest_lines = [json.dumps(run_record, sort_keys=True, separators=(",", ":"))]
-    for container in sorted(
-        containers,
-        key=lambda record: (tuple(record["sort_key"]), record["container_id"]),
-    ):
-        manifest_lines.append(
-            json.dumps(
+
+    def manifest_lines() -> Iterable[str]:
+        nonlocal outcome
+        yield json.dumps(run_record, sort_keys=True, separators=(",", ":"))
+        for container in containers:
+            yield json.dumps(
                 {"record_type": "container", **container},
                 sort_keys=True,
                 separators=(",", ":"),
-            ),
-        )
-    for occurrence in plan:
-        manifest_lines.append(
-            json.dumps(
+            )
+        for occurrence in plan:
+            status = str(occurrence["status"])
+            statuses[status] += 1
+            groups[str(occurrence["detection"]["group"])] += 1
+            if occurrence.get("reason"):
+                reasons[str(occurrence["reason"])] += 1
+            if status == Status.UNPROCESSED.value:
+                outcome = ExitOutcome.PARTIAL
+            yield json.dumps(
                 {"record_type": "occurrence", **occurrence},
                 sort_keys=True,
                 separators=(",", ":"),
-            ),
-        )
-    manifest = destination / "manifest.jsonl"
-    _atomic_text(manifest, "\n".join(manifest_lines) + "\n")
+            )
 
-    statuses = Counter(str(record["status"]) for record in plan)
-    groups = Counter(str(record["detection"]["group"]) for record in plan)
-    reasons = Counter(str(record["reason"]) for record in plan if record.get("reason"))
+    manifest = destination / "manifest.jsonl"
+    _atomic_lines(manifest, manifest_lines())
+
     report_lines = [
         "unpacksort report",
         f"outcome: {'partial' if outcome == ExitOutcome.PARTIAL else 'complete'}",
@@ -114,6 +119,22 @@ def _atomic_text(path: Path, text: str) -> None:
     try:
         with temporary.open("x", encoding="utf-8", newline="\n") as stream:
             stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def _atomic_lines(path: Path, lines: Iterable[str]) -> None:
+    temporary = path.with_name(f".{path.name}.unpacksort.tmp")
+    temporary.unlink(missing_ok=True)
+    try:
+        with temporary.open("x", encoding="utf-8", newline="\n") as stream:
+            for line in lines:
+                stream.write(line)
+                stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
         temporary.replace(path)

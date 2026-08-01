@@ -9,7 +9,7 @@ pipx install unpacksort
 unpacksort --help
 ```
 
-Published releases also provide:
+The intended release channels, once the first release is published, are:
 
 - `brew install fileworks/tap/unpacksort`
 - a Windows x64 portable ZIP from GitHub Releases
@@ -234,6 +234,13 @@ limits.
 
 Human diagnostics go to stderr. Successful completion data on stdout identifies
 the destination, manifest, report, and outcome.
+
+Typed progress covers fingerprint, discovery/expansion, planning, publication,
+reporting, and completion. It is rate-limited during active work and emits a
+five-second heartbeat during silence. The same records reach a bounded rotating
+log beside the destination by default; use `--log-file PATH` to relocate it and
+`--verbose` for debug diagnostics. The final record is flushed on success,
+partial success, interruption, and fatal failure.
 
 ## Troubleshooting
 

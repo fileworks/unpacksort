@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
+from itertools import zip_longest
 from pathlib import Path
 from typing import Any, Self
 
@@ -185,83 +186,111 @@ class Journal:
     def record_occurrence(self, occurrence: Occurrence) -> None:
         """Upsert a deterministic occurrence and its diagnostics."""
 
-        payload = json.dumps(occurrence.to_record(), sort_keys=True, separators=(",", ":"))
-        sort_key = json.dumps(occurrence.sort_key, ensure_ascii=False, separators=(",", ":"))
+        self.record_occurrence_record(occurrence.to_record())
+
+    def record_occurrence_record(self, record: dict[str, Any]) -> None:
+        """Upsert one already serialized occurrence record."""
+
+        payload = json.dumps(record, sort_keys=True, separators=(",", ":"))
+        sort_key = json.dumps(record["sort_key"], ensure_ascii=False, separators=(",", ":"))
+        occurrence_id = str(record["occurrence_id"])
         with self.transaction() as connection:
             connection.execute(
                 "INSERT INTO occurrences(occurrence_id, sort_key, payload) VALUES (?, ?, ?) "
                 "ON CONFLICT(occurrence_id) DO UPDATE SET "
                 "sort_key = excluded.sort_key, payload = excluded.payload",
-                (occurrence.occurrence_id, sort_key, payload),
+                (occurrence_id, sort_key, payload),
             )
             connection.execute(
                 "INSERT INTO nodes(node_id, payload, committed) VALUES (?, ?, 1) "
                 "ON CONFLICT(node_id) DO UPDATE SET "
                 "payload = excluded.payload, committed = 1",
-                (occurrence.occurrence_id, payload),
+                (occurrence_id, payload),
             )
             connection.execute(
                 "DELETE FROM diagnostics WHERE occurrence_id = ?",
-                (occurrence.occurrence_id,),
+                (occurrence_id,),
             )
-            for index, diagnostic in enumerate(occurrence.diagnostics):
+            diagnostics = record.get("diagnostics") or []
+            for index, diagnostic in enumerate(diagnostics):
                 connection.execute(
                     "INSERT INTO diagnostics("
                     "diagnostic_id, occurrence_id, code, detail"
                     ") VALUES (?, ?, ?, ?)",
                     (
-                        f"{occurrence.occurrence_id}:{index:04d}",
-                        occurrence.occurrence_id,
-                        diagnostic.code,
-                        diagnostic.detail,
+                        f"{occurrence_id}:{index:04d}",
+                        occurrence_id,
+                        str(diagnostic["code"]),
+                        str(diagnostic.get("detail") or ""),
                     ),
                 )
 
     def record_container(self, container: ContainerRecord) -> None:
         """Upsert a deterministic container record."""
 
-        payload = json.dumps(container.to_record(), sort_keys=True, separators=(",", ":"))
-        sort_key = json.dumps(container.sort_key, ensure_ascii=False, separators=(",", ":"))
+        self.record_container_record(container.to_record())
+
+    def record_container_record(self, record: dict[str, Any]) -> None:
+        """Upsert one already serialized container record."""
+
+        payload = json.dumps(record, sort_keys=True, separators=(",", ":"))
+        sort_key = json.dumps(record["sort_key"], ensure_ascii=False, separators=(",", ":"))
+        container_id = str(record["container_id"])
         with self.transaction() as connection:
             connection.execute(
                 "INSERT INTO containers(container_id, sort_key, payload) VALUES (?, ?, ?) "
                 "ON CONFLICT(container_id) DO UPDATE SET "
                 "sort_key = excluded.sort_key, payload = excluded.payload",
-                (container.container_id, sort_key, payload),
+                (container_id, sort_key, payload),
             )
             connection.execute(
                 "INSERT INTO nodes(node_id, payload, committed) VALUES (?, ?, 1) "
                 "ON CONFLICT(node_id) DO UPDATE SET "
                 "payload = excluded.payload, committed = 1",
-                (container.container_id, payload),
+                (container_id, payload),
             )
 
     def occurrence_records(self) -> list[dict[str, Any]]:
-        """Load discovered occurrences in portable provenance order."""
+        """Compatibility wrapper loading occurrences into a list."""
 
+        return list(self.iter_occurrence_records())
+
+    def iter_occurrence_records(self) -> Iterator[dict[str, Any]]:
+        """Stream discovered occurrences in portable provenance order."""
         rows = self._connection.execute(
             "SELECT payload FROM occurrences ORDER BY sort_key, occurrence_id",
         )
-        return [json.loads(str(row["payload"])) for row in rows]
+        for row in rows:
+            yield json.loads(str(row["payload"]))
 
     def container_records(self) -> list[dict[str, Any]]:
-        """Load containers in portable provenance order."""
+        """Compatibility wrapper loading containers into a list."""
 
+        return list(self.iter_container_records())
+
+    def iter_container_records(self) -> Iterator[dict[str, Any]]:
+        """Stream containers in portable provenance order."""
         rows = self._connection.execute(
             "SELECT payload FROM containers ORDER BY sort_key, container_id",
         )
-        return [json.loads(str(row["payload"])) for row in rows]
+        for row in rows:
+            yield json.loads(str(row["payload"]))
 
-    def freeze(self, plan: list[dict[str, Any]]) -> None:
+    def freeze(self, plan: Iterable[dict[str, Any]]) -> None:
         """Persist the immutable path plan once."""
 
         with self.transaction() as connection:
             existing = connection.execute("SELECT COUNT(*) FROM frozen_plans").fetchone()[0]
             if existing:
-                stored = self.plan_records()
-                if stored != plan:
-                    msg = "destination already contains a different frozen plan"
-                    raise StateConflictError(msg)
+                missing = object()
+                for stored, candidate in zip_longest(
+                    self.iter_plan_records(),
+                    plan,
+                    fillvalue=missing,
+                ):
+                    if stored != candidate:
+                        msg = "destination already contains a different frozen plan"
+                        raise StateConflictError(msg)
                 return
             for ordinal, record in enumerate(plan):
                 connection.execute(
@@ -294,12 +323,22 @@ class Journal:
         )
 
     def plan_records(self) -> list[dict[str, Any]]:
-        """Load the immutable plan."""
+        """Compatibility wrapper loading the immutable plan into a list."""
 
+        return list(self.iter_plan_records())
+
+    def iter_plan_records(self) -> Iterator[dict[str, Any]]:
+        """Stream the immutable plan in ordinal order."""
         rows = self._connection.execute(
             "SELECT payload FROM frozen_plans ORDER BY ordinal",
         )
-        return [json.loads(str(row["payload"])) for row in rows]
+        for row in rows:
+            yield json.loads(str(row["payload"]))
+
+    def plan_count(self) -> int:
+        """Return the immutable plan size without materializing it."""
+
+        return int(self._connection.execute("SELECT COUNT(*) FROM frozen_plans").fetchone()[0])
 
     def mark_published(self, occurrence_id: str) -> None:
         """Commit one atomic publication transition."""

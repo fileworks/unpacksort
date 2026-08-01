@@ -22,6 +22,7 @@ def test_quality_workflow_has_cross_platform_version_and_artifact_gates() -> Non
         "build",
         "dependency-audit",
         "docs-links",
+        "scale",
     }
     for job_name in ("quality", "build"):
         job = jobs[job_name]
