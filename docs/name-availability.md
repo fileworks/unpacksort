@@ -8,7 +8,7 @@ The exact name `unpacksort` was rechecked before repository creation on
 | GitHub | `fileworks/unpacksort` | Reserved; v1.1.0 published |
 | PyPI | `unpacksort` | Reserved; 1.1.0 published with trusted publishing |
 | Homebrew tap | `fileworks/tap/unpacksort` | Reserved; 1.1.0 formula published |
-| WinGet | `fileworks.unpacksort` | No manifest |
+| WinGet | `fileworks.unpacksort` | Initial manifest under Microsoft review ([PR 410897](https://github.com/microsoft/winget-pkgs/pull/410897)) |
 | npm | `unpacksort` | No package |
 | crates.io | `unpacksort` | No crate |
 | RubyGems | `unpacksort` | No gem |

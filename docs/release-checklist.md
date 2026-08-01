@@ -10,6 +10,8 @@ every public asset was downloaded again, checksum/type/layout verified, the
 PyPI wheel and sdist attestations were cryptographically verified against
 `fileworks/unpacksort`, and the exact public package passed an isolated pipx
 archive-extraction smoke test.
+The initial WinGet manifest is under review in
+[`microsoft/winget-pkgs#410897`](https://github.com/microsoft/winget-pkgs/pull/410897).
 Unchecked items still require an external clean host or WinGet acceptance.
 
 Record the release version, tag, workflow run URLs, operator, and results.
@@ -61,7 +63,7 @@ Record the release version, tag, workflow run URLs, operator, and results.
       x64 architecture, identifier, and `unpacksort` alias.
 - [x] Record the Homebrew PR and WinGet bootstrap as the visible external
       follow-up.
-- [ ] Submit and obtain acceptance for the initial `fileworks.unpacksort`
-      WinGet manifest.
+- [ ] Obtain acceptance for the submitted initial `fileworks.unpacksort`
+      [WinGet manifest](https://github.com/microsoft/winget-pkgs/pull/410897).
 - [ ] After catalog acceptance, enable and verify automated WinGet update
       submissions as documented in `release.md`.

@@ -14,8 +14,9 @@ and retained as unprocessed; source links and archive links are never followed.
 
 **Published.** Version 1.1.0 is available from PyPI and the official GitHub
 Release, including the unsigned Windows x64 portable ZIP. The Homebrew formula
-is available from `fileworks/tap`. WinGet is the only distribution identity
-still awaiting its first accepted catalog submission.
+is available from `fileworks/tap`. The initial WinGet manifest is
+[under Microsoft review](https://github.com/microsoft/winget-pkgs/pull/410897);
+the catalog identity is not reserved until that PR is accepted.
 
 ## Overview
 
@@ -39,7 +40,8 @@ Windows x64 portable ZIP from the official GitHub Release. The executable is
 unsigned and can trigger an operating-system trust prompt. Verify the published
 SHA-256 checksum, while remembering that a checksum detects damage but does not
 independently prove who published a file. `winget install fileworks.unpacksort`
-will become available only after Microsoft accepts the initial manifest.
+will become available only after Microsoft accepts
+[the initial manifest](https://github.com/microsoft/winget-pkgs/pull/410897).
 
 ## Quick start
 
