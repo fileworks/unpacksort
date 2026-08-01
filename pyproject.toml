@@ -46,7 +46,7 @@ dev = [
   "pyinstaller==6.15.0",
   "PyYAML==6.0.3",
   "pytest==9.0.3",
-  "pytest-cov==6.2.1",
+  "pytest-cov==7.1.0",
   "python-semantic-release==10.6.1",
   "ruff==0.12.5",
 ]
