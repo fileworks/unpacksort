@@ -41,7 +41,7 @@ unpacksort = "unpacksort.cli:app"
 dev = [
   "build==1.3.0",
   "hypothesis==6.136.6",
-  "mypy==1.17.1",
+  "mypy==2.3.0",
   "pip-audit==2.9.0",
   "pyinstaller==6.15.0",
   "PyYAML==6.0.3",
