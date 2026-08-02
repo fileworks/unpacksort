@@ -130,7 +130,7 @@ def iter_message_path(
 def _parse_mailbox_message(stream: _GetFileReturn) -> mailbox.mboxMessage:
     # mailbox and email expose different private stream protocols in typeshed even
     # though mailbox's proxy implements the binary interface BytesParser consumes.
-    parsed = BytesParser(policy=MAIL_POLICY).parse(cast(Any, stream))
+    parsed = BytesParser(policy=MAIL_POLICY).parse(cast("Any", stream))
     return mailbox.mboxMessage(parsed)
 
 
