@@ -1020,48 +1020,70 @@ def _walk_directory(
         directory: Path,
         relative_parent: PurePosixPath,
     ) -> Iterator[tuple[Path, str, tuple[AncestryNode, ...], Reason | None]]:
+        # A single directory can itself contain hundreds of thousands of
+        # entries. Keep its deterministic sort index on disk instead of asking
+        # ``sorted(os.scandir(...))`` to retain every DirEntry in Python memory.
+        index = sqlite3.connect("")
         try:
-            with os.scandir(directory) as scanner:
-                entries = sorted(
-                    scanner,
-                    key=lambda entry: (
-                        *portable_text_key(entry.name),
-                        entry.name.encode("utf-8", "surrogatepass").hex(),
-                    ),
-                )
-        except OSError:
-            relative_text = relative_parent.as_posix() or "."
-            ancestry = tuple(
-                AncestryNode("source_dir", component, component)
-                for component in relative_parent.parent.parts
-                if component not in {"", "."}
-            )
-            yield (directory, relative_text, ancestry, Reason.UNREADABLE)
-            return
-        for entry in entries:
-            relative = relative_parent / entry.name
-            relative_text = relative.as_posix()
-            ancestry = tuple(
-                AncestryNode("source_dir", component, component)
-                for component in relative.parent.parts
-                if component not in {"", "."}
+            index.execute(
+                "CREATE TABLE entries ("
+                "folded TEXT NOT NULL, normalized BLOB NOT NULL, "
+                "original BLOB NOT NULL, name TEXT NOT NULL)"
             )
             try:
-                entry_stat = entry.stat(follow_symlinks=False)
-                mode = entry_stat.st_mode
+                with os.scandir(directory) as scanner:
+                    for entry in scanner:
+                        folded, normalized = portable_text_key(entry.name)
+                        index.execute(
+                            "INSERT INTO entries(folded, normalized, original, name) "
+                            "VALUES (?, ?, ?, ?)",
+                            (
+                                folded,
+                                normalized,
+                                entry.name.encode("utf-8", "surrogatepass"),
+                                entry.name,
+                            ),
+                        )
             except OSError:
-                yield (Path(entry.path), relative_text, ancestry, Reason.UNREADABLE)
-                continue
-            if (
-                stat.S_ISLNK(mode)
-                or bool(getattr(entry_stat, "st_reparse_tag", 0))
-                or not (stat.S_ISREG(mode) or stat.S_ISDIR(mode))
-            ):
-                yield (Path(entry.path), relative_text, ancestry, Reason.UNSAFE_ENTRY)
-            elif stat.S_ISDIR(mode):
-                yield from visit(Path(entry.path), relative)
-            else:
-                yield (Path(entry.path), relative_text, ancestry, None)
+                relative_text = relative_parent.as_posix() or "."
+                ancestry = tuple(
+                    AncestryNode("source_dir", component, component)
+                    for component in relative_parent.parent.parts
+                    if component not in {"", "."}
+                )
+                yield (directory, relative_text, ancestry, Reason.UNREADABLE)
+                return
+            index.commit()
+            entries = index.execute(
+                "SELECT name FROM entries ORDER BY folded, normalized, original",
+            )
+            for (entry_name,) in entries:
+                candidate = directory / str(entry_name)
+                relative = relative_parent / str(entry_name)
+                relative_text = relative.as_posix()
+                ancestry = tuple(
+                    AncestryNode("source_dir", component, component)
+                    for component in relative.parent.parts
+                    if component not in {"", "."}
+                )
+                try:
+                    entry_stat = candidate.stat(follow_symlinks=False)
+                    mode = entry_stat.st_mode
+                except OSError:
+                    yield (candidate, relative_text, ancestry, Reason.UNREADABLE)
+                    continue
+                if (
+                    stat.S_ISLNK(mode)
+                    or bool(getattr(entry_stat, "st_reparse_tag", 0))
+                    or not (stat.S_ISREG(mode) or stat.S_ISDIR(mode))
+                ):
+                    yield (candidate, relative_text, ancestry, Reason.UNSAFE_ENTRY)
+                elif stat.S_ISDIR(mode):
+                    yield from visit(candidate, relative)
+                else:
+                    yield (candidate, relative_text, ancestry, None)
+        finally:
+            index.close()
 
     yield from visit(root, PurePosixPath())
 
