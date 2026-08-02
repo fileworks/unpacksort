@@ -55,29 +55,36 @@ PACKAGE_PROFILES = (
         "odf-text",
         Group.DOCUMENTS,
         ".odt",
-        lambda names, read: "mimetype" in names
-        and read("mimetype").strip() == b"application/vnd.oasis.opendocument.text",
+        lambda names, read: (
+            "mimetype" in names
+            and read("mimetype").strip() == b"application/vnd.oasis.opendocument.text"
+        ),
     ),
     PackageProfile(
         "odf-sheet",
         Group.SPREADSHEETS,
         ".ods",
-        lambda names, read: "mimetype" in names
-        and read("mimetype").strip() == b"application/vnd.oasis.opendocument.spreadsheet",
+        lambda names, read: (
+            "mimetype" in names
+            and read("mimetype").strip() == b"application/vnd.oasis.opendocument.spreadsheet"
+        ),
     ),
     PackageProfile(
         "odf-presentation",
         Group.PRESENTATIONS,
         ".odp",
-        lambda names, read: "mimetype" in names
-        and read("mimetype").strip() == b"application/vnd.oasis.opendocument.presentation",
+        lambda names, read: (
+            "mimetype" in names
+            and read("mimetype").strip() == b"application/vnd.oasis.opendocument.presentation"
+        ),
     ),
     PackageProfile(
         "epub",
         Group.EBOOKS,
         ".epub",
-        lambda names, read: "mimetype" in names
-        and read("mimetype").strip() == b"application/epub+zip",
+        lambda names, read: (
+            "mimetype" in names and read("mimetype").strip() == b"application/epub+zip"
+        ),
     ),
     PackageProfile(
         "java-war",
@@ -107,8 +114,9 @@ PACKAGE_PROFILES = (
         "android-bundle",
         Group.PACKAGES,
         ".aab",
-        lambda names, _read: "BundleConfig.pb" in names
-        and "base/manifest/AndroidManifest.xml" in names,
+        lambda names, _read: (
+            "BundleConfig.pb" in names and "base/manifest/AndroidManifest.xml" in names
+        ),
     ),
     PackageProfile(
         "python-wheel",
