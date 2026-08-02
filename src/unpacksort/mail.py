@@ -10,7 +10,10 @@ from email import policy
 from email.message import Message
 from email.parser import BytesParser
 from pathlib import Path
-from typing import IO, Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from mailbox import _GetFileReturn
 
 from unpacksort.models import AncestryNode, Diagnostic, Reason
 
@@ -124,8 +127,10 @@ def iter_message_path(
     yield from _walk_message(message, ancestry, (), frozenset({digest}), ())
 
 
-def _parse_mailbox_message(stream: IO[Any]) -> mailbox.mboxMessage:
-    parsed = BytesParser(policy=MAIL_POLICY).parse(stream)
+def _parse_mailbox_message(stream: _GetFileReturn) -> mailbox.mboxMessage:
+    # mailbox and email expose different private stream protocols in typeshed even
+    # though mailbox's proxy implements the binary interface BytesParser consumes.
+    parsed = BytesParser(policy=MAIL_POLICY).parse(cast(Any, stream))
     return mailbox.mboxMessage(parsed)
 
 
