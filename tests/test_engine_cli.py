@@ -186,6 +186,11 @@ def test_cli_help_version_and_usage_errors(tmp_path: Path) -> None:
     ):
         assert option in help_text
     assert "--dry-run" not in help_text
+    # The three CLIs are meant to be usable from one script; `-h` is documented
+    # nowhere but works in the other two, so a reader carries the habit over.
+    short_result = runner.invoke(app, ["-h"], terminal_width=160)
+    assert short_result.exit_code == 0
+    assert unstyle(short_result.stdout) == help_text
     readme = Path("README.md").read_text(encoding="utf-8")
     assert "--dry-run" not in readme
     assert "all seven safety limits" in readme

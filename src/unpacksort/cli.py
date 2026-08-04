@@ -29,6 +29,9 @@ app = typer.Typer(
     no_args_is_help=True,
     pretty_exceptions_enable=False,
     help="Safely recover and deterministically organize mail and archive content.",
+    # `-h` works in immich-export and paperless-export; a reader who learns it
+    # from one of them should not be told "No such option" by the third.
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
 
 
