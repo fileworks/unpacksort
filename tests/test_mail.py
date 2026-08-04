@@ -3,6 +3,7 @@ from __future__ import annotations
 import mailbox
 from email.message import EmailMessage
 from pathlib import Path
+from typing import cast
 
 from hypothesis import given
 from hypothesis import strategies as st
@@ -30,7 +31,8 @@ def test_display_bodies_are_excluded_but_inline_resources_are_emitted() -> None:
     message["To"] = "b@example.test"
     message.set_content("plain")
     message.add_alternative("<html>html</html>", subtype="html")
-    message.get_payload()[1].add_related(
+    html_part = cast("list[EmailMessage]", message.get_payload())[1]
+    html_part.add_related(
         b"\x89PNG\r\n\x1a\n",
         maintype="image",
         subtype="png",

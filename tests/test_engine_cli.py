@@ -8,6 +8,7 @@ import tarfile
 import zipfile
 from email.message import EmailMessage
 from pathlib import Path
+from typing import cast
 
 import py7zr
 import pytest
@@ -309,8 +310,10 @@ def test_message_inside_archive_is_traversed_with_full_provenance(tmp_path: Path
     assert list((destination / "documents").rglob("note.txt"))
     occurrences = [row for row in _manifest(manifest) if row["record_type"] == "occurrence"]
     assert len(occurrences) == 1
-    assert occurrences[0]["metadata"]["archive_member_name"] == "messages/nested.eml"
-    ancestry_kinds = [node["kind"] for node in occurrences[0]["ancestry"]]
+    metadata = cast("dict[str, object]", occurrences[0]["metadata"])
+    assert metadata["archive_member_name"] == "messages/nested.eml"
+    ancestry = cast("list[dict[str, object]]", occurrences[0]["ancestry"])
+    ancestry_kinds = [node["kind"] for node in ancestry]
     assert ancestry_kinds.count("archive") == 1
     assert ancestry_kinds.count("message") == 1
 
