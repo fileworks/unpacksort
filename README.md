@@ -71,22 +71,6 @@ staged privately, content-addressed, and published atomically. Archive paths
 never directly control public paths. The initial release does not isolate parsers
 in a process or VM and is not a malware scanner.
 
-## Development
-
-```console
-uv sync --locked --all-groups
-uv run ruff format --check .
-uv run ruff check .
-uv run mypy
-uv run pytest
-```
-
-Use an ignored `CLAUDE.local.md` at the repository root for per-clone paths,
-commands, or private preferences. Never store credentials or other secrets
-there.
-
-Licensed under the [MIT License](LICENSE).
-
 ## Usage
 
 ```console
@@ -137,6 +121,20 @@ is retained as-is rather than published as a valid document.
 
 **The output differs between two runs of the same input.** It should not. That is
 a bug worth reporting, with the two manifests.
+
+## Development
+
+```console
+uv sync --locked --all-extras --all-groups
+uv run ruff check . && uv run ruff format --check .   # lint
+uv run mypy                                           # strict types
+uv run pytest                                         # tests
+uv build                                              # sdist + wheel
+```
+
+Use an ignored `CLAUDE.local.md` at the repository root for per-clone paths,
+commands, or private preferences. Never store credentials or other secrets
+there.
 
 ## Security
 
