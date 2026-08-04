@@ -110,6 +110,20 @@ and minimum values. Raising a limit is an operator decision and expands the
 resource budget for untrusted input, so scheduled jobs should pin reviewed
 values rather than accept input-controlled arguments.
 
+## Exit codes
+
+The same codes mean the same thing in `immich-export`, `paperless-export` and
+`unpacksort`, so one script can drive all three.
+
+| Code | Name | Meaning |
+|---|---|---|
+| 0 | `SUCCESS` | everything asked for was done |
+| 1 | `PARTIAL` | some content was published and some was not; the report names each stable reason |
+| 2 | `USAGE` | bad flags or an unusable input path — nothing was attempted |
+| 3 | `CONFLICT` | the destination holds an incompatible journal or a frozen plan |
+| 4 | `FATAL` | unexpected failure, or output that could not be written |
+| 130 | `INTERRUPTED` | cancelled by the operator; committed journal work can be resumed |
+
 ## Troubleshooting
 
 **A RAR archive was not extracted.** RAR is detected and retained unprocessed;
