@@ -28,7 +28,11 @@ def test_quality_workflow_has_cross_platform_version_and_artifact_gates() -> Non
         job = jobs[job_name]
         matrix = job["strategy"]["matrix"]
         assert matrix["os"] == ["ubuntu-latest", "macos-latest", "windows-latest"]
-        assert matrix["python"] == ["3.12", "3.14"]
+        # Every version the package classifies, and only those. CI used to run
+        # 3.12 and 3.14 while the classifiers named 3.12 alone — the matrix
+        # tested more than the package promised, and `requires-python = ">=3.12"`
+        # promised a 3.13 nothing ran.
+        assert matrix["python"] == ["3.12", "3.13", "3.14"]
     text = (Path(".github/workflows") / "quality.yml").read_text(encoding="utf-8")
     assert "scripts/installed_e2e.py" in text
     assert "uv run pip-audit" in text
