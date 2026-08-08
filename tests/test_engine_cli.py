@@ -8,6 +8,7 @@ import tarfile
 import zipfile
 from email.message import EmailMessage
 from pathlib import Path
+from typing import cast
 
 import py7zr
 import pytest
@@ -185,6 +186,11 @@ def test_cli_help_version_and_usage_errors(tmp_path: Path) -> None:
     ):
         assert option in help_text
     assert "--dry-run" not in help_text
+    # The three CLIs are meant to be usable from one script; `-h` is documented
+    # nowhere but works in the other two, so a reader carries the habit over.
+    short_result = runner.invoke(app, ["-h"], terminal_width=160)
+    assert short_result.exit_code == 0
+    assert unstyle(short_result.stdout) == help_text
     readme = Path("README.md").read_text(encoding="utf-8")
     assert "--dry-run" not in readme
     assert "all seven safety limits" in readme
@@ -309,8 +315,10 @@ def test_message_inside_archive_is_traversed_with_full_provenance(tmp_path: Path
     assert list((destination / "documents").rglob("note.txt"))
     occurrences = [row for row in _manifest(manifest) if row["record_type"] == "occurrence"]
     assert len(occurrences) == 1
-    assert occurrences[0]["metadata"]["archive_member_name"] == "messages/nested.eml"
-    ancestry_kinds = [node["kind"] for node in occurrences[0]["ancestry"]]
+    metadata = cast("dict[str, object]", occurrences[0]["metadata"])
+    assert metadata["archive_member_name"] == "messages/nested.eml"
+    ancestry = cast("list[dict[str, object]]", occurrences[0]["ancestry"])
+    ancestry_kinds = [node["kind"] for node in ancestry]
     assert ancestry_kinds.count("archive") == 1
     assert ancestry_kinds.count("message") == 1
 

@@ -17,6 +17,8 @@ classifiers = [
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Communications :: Email",
   "Topic :: System :: Archiving",
 ]
@@ -45,6 +47,7 @@ dev = [
   "pip-audit==2.10.1",
   "pyinstaller==6.21.0",
   "PyYAML==6.0.3",
+  "types-PyYAML==6.0.12.20250915",
   "pytest==9.1.1",
   "pytest-cov==7.1.0",
   "python-semantic-release==10.6.1",
@@ -89,7 +92,9 @@ ignore = [
 [tool.mypy]
 python_version = "3.12"
 strict = true
-packages = ["unpacksort"]
+# Same scope as immich-export and paperless-export: the tests and the release
+# scripts are checked too, not just the package.
+files = ["src", "tests", "scripts"]
 mypy_path = "src"
 warn_unreachable = true
 

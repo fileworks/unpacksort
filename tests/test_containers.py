@@ -5,6 +5,7 @@ import stat
 import tarfile
 import zipfile
 from pathlib import Path
+from typing import Any, cast
 
 import py7zr
 import pytest
@@ -149,7 +150,7 @@ def test_tar_compression_families(tmp_path: Path, mode: str) -> None:
     suffix = mode.replace("w", "").replace(":", "") or "tar"
     path = tmp_path / f"fixture.{suffix}"
     payload = b"tar payload"
-    with tarfile.open(path, mode) as archive:
+    with tarfile.open(path, cast("Any", mode)) as archive:
         info = tarfile.TarInfo("nested/a.txt")
         info.size = len(payload)
         archive.addfile(info, io.BytesIO(payload))

@@ -71,22 +71,6 @@ staged privately, content-addressed, and published atomically. Archive paths
 never directly control public paths. The initial release does not isolate parsers
 in a process or VM and is not a malware scanner.
 
-## Development
-
-```console
-uv sync --locked --all-groups
-uv run ruff format --check .
-uv run ruff check .
-uv run mypy
-uv run pytest
-```
-
-Use an ignored `CLAUDE.local.md` at the repository root for per-clone paths,
-commands, or private preferences. Never store credentials or other secrets
-there.
-
-Licensed under the [MIT License](LICENSE).
-
 ## Usage
 
 ```console
@@ -110,6 +94,22 @@ and minimum values. Raising a limit is an operator decision and expands the
 resource budget for untrusted input, so scheduled jobs should pin reviewed
 values rather than accept input-controlled arguments.
 
+## Exit codes
+
+`immich-export`, `paperless-export` and `unpacksort` share one exit-code
+vocabulary, so a script can branch on the code without knowing which tool it
+ran. The class of outcome is the same everywhere; the specific condition is
+this tool's, and the table below is what it means here.
+
+| Code | Name | Meaning |
+|---|---|---|
+| 0 | `SUCCESS` | everything asked for was done |
+| 1 | `PARTIAL` | some content was published and some was not; the report names each stable reason |
+| 2 | `USAGE` | bad flags or an unusable input path — nothing was attempted |
+| 3 | `CONFLICT` | the destination holds an incompatible journal or a frozen plan |
+| 4 | `FATAL` | unexpected failure, or output that could not be written |
+| 130 | `INTERRUPTED` | cancelled by the operator; committed journal work can be resumed |
+
 ## Troubleshooting
 
 **A RAR archive was not extracted.** RAR is detected and retained unprocessed;
@@ -123,6 +123,20 @@ is retained as-is rather than published as a valid document.
 
 **The output differs between two runs of the same input.** It should not. That is
 a bug worth reporting, with the two manifests.
+
+## Development
+
+```console
+uv sync --locked --all-extras --all-groups
+uv run ruff check . && uv run ruff format --check .   # lint
+uv run mypy                                           # strict types
+uv run pytest                                         # tests
+uv build                                              # sdist + wheel
+```
+
+Use an ignored `CLAUDE.local.md` at the repository root for per-clone paths,
+commands, or private preferences. Never store credentials or other secrets
+there.
 
 ## Security
 
