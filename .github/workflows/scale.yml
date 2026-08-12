@@ -1,0 +1,31 @@
+name: Scale
+
+on:
+  schedule:
+    - cron: "17 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scale:
+    name: scale (${{ matrix.tier }} records)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        tier: [20000, 100000, 500000]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v9.0.0
+      - name: Install locked development environment
+        run: uv sync --locked --all-groups
+      - name: Run bounded production-path tier
+        env:
+          UNPACKSORT_SCALE_TIER: ${{ matrix.tier }}
+        run: uv run pytest -q -o addopts= tests/test_scale_budgets.py

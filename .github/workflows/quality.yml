@@ -86,28 +86,6 @@ jobs:
       - name: Audit current advisories
         run: uv run pip-audit
 
-  scale:
-    name: scale (${{ matrix.tier }} records)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        tier: [20000, 100000, 500000]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.14"
-      - uses: astral-sh/setup-uv@v9.0.0
-      - name: Install locked development environment
-        run: uv sync --locked --all-groups
-      - name: Run bounded production-path tier
-        env:
-          UNPACKSORT_SCALE_TIER: ${{ matrix.tier }}
-        run: uv run pytest -q -o addopts= tests/test_scale_budgets.py
-
   docs-links:
     name: docs-links
     runs-on: ubuntu-latest

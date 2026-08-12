@@ -11,6 +11,11 @@ on:
         type: choice
         options: ["", patch, minor, major]
         default: ""
+      recover_tag:
+        description: "Rebuild and publish an existing verified tag (vX.Y.Z)"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -26,14 +31,14 @@ jobs:
     permissions:
       contents: write
     outputs:
-      released: ${{ steps.release.outputs.released || 'false' }}
-      tag: ${{ steps.release.outputs.tag }}
-      version: ${{ steps.release.outputs.version }}
-      commit_sha: ${{ steps.release.outputs.commit_sha }}
+      released: ${{ steps.recovery.outputs.released || steps.release.outputs.released || 'false' }}
+      tag: ${{ steps.recovery.outputs.tag || steps.release.outputs.tag }}
+      version: ${{ steps.recovery.outputs.version || steps.release.outputs.version }}
+      commit_sha: ${{ steps.recovery.outputs.commit_sha || steps.release.outputs.commit_sha }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ inputs.recover_tag || github.ref_name }}
           fetch-depth: 0
           token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
       - uses: actions/setup-python@v7
@@ -51,6 +56,7 @@ jobs:
           uv run pytest
       - name: Determine, commit, and tag the semantic version
         id: release
+        if: inputs.recover_tag == ''
         uses: python-semantic-release/python-semantic-release@v10.6.1
         with:
           github_token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
@@ -58,8 +64,61 @@ jobs:
           git_committer_email: "niklas.buechel@accso.de"
           force: ${{ inputs.force }}
           vcs_release: "false"
+      - name: Rebuild a verified release tag
+        id: recovery
+        if: inputs.recover_tag != ''
+        env:
+          FORCE_BUMP: ${{ inputs.force }}
+          RECOVER_TAG: ${{ inputs.recover_tag }}
+        shell: bash
+        run: |
+          if [[ -n "$FORCE_BUMP" ]]; then
+            echo "::error::force and recover_tag are mutually exclusive"
+            exit 1
+          fi
+          if [[ ! "$RECOVER_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::recover_tag must be a stable vX.Y.Z tag"
+            exit 1
+          fi
+          if [[ "$(git cat-file -t "refs/tags/$RECOVER_TAG")" != tag ]]; then
+            echo "::error::$RECOVER_TAG must be an annotated tag"
+            exit 1
+          fi
+
+          commit_sha="$(git rev-parse "$RECOVER_TAG^{}")"
+          if [[ "$(git rev-parse HEAD)" != "$commit_sha" ]]; then
+            echo "::error::checkout does not match $RECOVER_TAG"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$commit_sha" origin/main; then
+            echo "::error::$RECOVER_TAG is not reachable from protected main"
+            exit 1
+          fi
+
+          version="${RECOVER_TAG#v}"
+          python - "$version" <<'PY'
+          import pathlib
+          import sys
+          import tomllib
+
+          expected = sys.argv[1]
+          payload = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
+          actual = payload["project"]["version"]
+          if actual != expected:
+              raise SystemExit(f"tag version {expected} does not match project version {actual}")
+          PY
+          if [[ "$(git log -1 --format=%s)" != "chore(release): $version" ]]; then
+            echo "::error::$RECOVER_TAG does not point to its release commit"
+            exit 1
+          fi
+
+          uv build
+          echo "released=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$RECOVER_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
       - name: Upload immutable Python candidates
-        if: steps.release.outputs.released == 'true'
+        if: steps.release.outputs.released == 'true' || steps.recovery.outputs.released == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: python-distributions
@@ -178,6 +237,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-integrity.outputs.tag }}
       - uses: actions/download-artifact@v8
         with:
           name: release-assets
