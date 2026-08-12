@@ -22,7 +22,7 @@ Protect `main` with:
 - pull requests and conversation resolution required;
 - force pushes and deletion disabled;
 - linear history required;
-- all six `quality (OS, Python)` and all six
+- all nine `quality (OS, Python)` and all nine
   `installed wheel (OS, Python)` contexts required;
 - release environments restricted to tags created from protected `main`.
 
@@ -41,6 +41,15 @@ assemble one immutable asset set, publish the GitHub Release through the
 the `pypi` environment, and dispatch the formula through `homebrew`. GitHub
 therefore shows Releases for user-facing versions and Deployments for each
 protected publication boundary.
+
+If a release commit and annotated tag were created but publication stopped
+before any public channel accepted the version, fix the verified pipeline defect
+first. Then dispatch `Release` from protected `main` with `recover_tag=vX.Y.Z`
+and leave `force` empty. Recovery checks out the exact annotated tag, proves its
+release commit and package version agree, proves the commit is reachable from
+`main`, repeats the complete quality and artifact E2E gates, and only then uses
+the normal publication jobs. Confirm the version is absent from GitHub Releases
+and PyPI before dispatching; never use recovery to replace published files.
 
 ## PyPI OIDC
 

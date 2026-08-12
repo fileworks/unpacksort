@@ -22,7 +22,6 @@ def test_quality_workflow_has_cross_platform_version_and_artifact_gates() -> Non
         "build",
         "dependency-audit",
         "docs-links",
-        "scale",
     }
     for job_name in ("quality", "build"):
         job = jobs[job_name]
@@ -36,6 +35,18 @@ def test_quality_workflow_has_cross_platform_version_and_artifact_gates() -> Non
     text = (Path(".github/workflows") / "quality.yml").read_text(encoding="utf-8")
     assert "scripts/installed_e2e.py" in text
     assert "uv run pip-audit" in text
+
+
+def test_scale_workflow_is_scheduled_without_skipping_main_quality_jobs() -> None:
+    workflow = _workflow("scale.yml")
+    jobs = workflow["jobs"]
+    assert isinstance(jobs, dict)
+    assert set(jobs) == {"scale"}
+    scale = jobs["scale"]
+    assert scale["strategy"]["matrix"]["tier"] == [20000, 100000, 500000]
+
+    quality = (Path(".github/workflows") / "quality.yml").read_text(encoding="utf-8")
+    assert "github.event_name" not in quality
 
 
 def test_release_workflow_publishes_only_after_artifact_e2e() -> None:
@@ -56,6 +67,9 @@ def test_release_workflow_publishes_only_after_artifact_e2e() -> None:
     assert jobs["pypi"]["permissions"]["id-token"] == "write"
     text = (Path(".github/workflows") / "release.yml").read_text(encoding="utf-8")
     assert 'vcs_release: "false"' in text
+    assert "recover_tag" in text
+    assert "git merge-base --is-ancestor" in text
+    assert "actions/checkout@v7" in text[text.index("github-release:") :]
     assert "gh release create" in text
     assert text.index("scripts/installed_e2e.py") < text.index("gh release create")
     assert text.index("gh release create") < text.index("pypa/gh-action-pypi-publish@release/v1")

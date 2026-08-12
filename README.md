@@ -127,12 +127,17 @@ a bug worth reporting, with the two manifests.
 ## Development
 
 ```console
-uv sync --locked --all-extras --all-groups
+uv sync --locked --all-groups
 uv run ruff check . && uv run ruff format --check .   # lint
 uv run mypy                                           # strict types
 uv run pytest                                         # tests
 uv build                                              # sdist + wheel
 ```
+
+Renovate batches normal dependency updates into one weekly, automerged pull
+request and permits only one dependency branch at a time. Releases are created
+from Conventional Commits after all source, wheel, and Windows portable checks
+pass; the operator runbook is [docs/release.md](docs/release.md).
 
 Use an ignored `CLAUDE.local.md` at the repository root for per-clone paths,
 commands, or private preferences. Never store credentials or other secrets
