@@ -12,7 +12,7 @@ and retained as unprocessed; source links and archive links are never followed.
 
 ## Status
 
-**Published.** Version 1.1.0 is available from PyPI and the official GitHub
+**Published.** Version 1.1.5 is available from PyPI and the official GitHub
 Release, including the unsigned Windows x64 portable ZIP. The Homebrew formula
 is available from `fileworks/tap`. The initial WinGet manifest is
 [under Microsoft review](https://github.com/microsoft/winget-pkgs/pull/410897);
