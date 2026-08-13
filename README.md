@@ -134,10 +134,12 @@ uv run pytest                                         # tests
 uv build                                              # sdist + wheel
 ```
 
-Renovate batches normal dependency updates into one weekly, automerged pull
-request and permits only one dependency branch at a time. Releases are created
-from Conventional Commits after all source, wheel, and Windows portable checks
-pass; the operator runbook is [docs/release.md](docs/release.md).
+Renovate batches routine non-major updates into one weekly `fix(deps)` pull
+request, permits only one dependency branch, and squash-merges only after all
+checks pass. Major, replacement, and rollback updates require explicit
+Dependency Dashboard approval and never auto-merge. Releases are created from
+Conventional Commits after all source, wheel, and Windows portable checks pass;
+the operator runbook is [docs/release.md](docs/release.md).
 
 Use an ignored `CLAUDE.local.md` at the repository root for per-clone paths,
 commands, or private preferences. Never store credentials or other secrets
