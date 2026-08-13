@@ -1,17 +1,4 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>fileworks/maintenance:renovate-policy"],
-  "branchConcurrentLimit": 1,
-  "prConcurrentLimit": 1,
-  "groupName": "weekly dependency updates",
-  "groupSlug": "weekly-dependency-updates",
-  "separateMajorMinor": false,
-  "packageRules": [
-    {
-      "description": "Keep normal updates in the repository-wide weekly branch.",
-      "matchPackageNames": ["*"],
-      "groupName": "weekly dependency updates",
-      "groupSlug": "weekly-dependency-updates"
-    }
-  ]
+  "extends": ["github>fileworks/maintenance:renovate-policy"]
 }
