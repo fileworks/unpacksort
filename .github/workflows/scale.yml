@@ -22,7 +22,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
-      - uses: astral-sh/setup-uv@v9.0.0
+      # astral-sh/setup-uv v9.0.0
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
       - name: Install locked development environment
         run: uv sync --locked --all-groups
       - name: Run bounded production-path tier

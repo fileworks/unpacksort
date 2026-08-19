@@ -44,7 +44,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
-      - uses: astral-sh/setup-uv@v9.0.0
+      # astral-sh/setup-uv v9.0.0
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
       - name: Install locked release environment
         run: uv sync --locked --all-groups
       - name: Verify release baseline
@@ -57,7 +58,8 @@ jobs:
       - name: Determine, commit, and tag the semantic version
         id: release
         if: inputs.recover_tag == ''
-        uses: python-semantic-release/python-semantic-release@v10.6.1
+        # python-semantic-release v10.6.1
+        uses: python-semantic-release/python-semantic-release@39dd2052f2ce8282a5d932c31d58a2ca06d2550e
         with:
           github_token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
           git_committer_name: "Niklas Büchel"
@@ -138,7 +140,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@v9.0.0
+      # astral-sh/setup-uv v9.0.0
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
       - uses: actions/download-artifact@v8
         with:
           name: python-distributions
@@ -164,7 +167,8 @@ jobs:
         with:
           python-version: "3.12"
           architecture: x64
-      - uses: astral-sh/setup-uv@v9.0.0
+      # astral-sh/setup-uv v9.0.0
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
       - name: Build pinned portable executable
         env:
           PYTHONHASHSEED: "0"
@@ -274,7 +278,8 @@ jobs:
           name: release-assets
           path: release-assets
       - name: Publish wheel and sdist through PyPI OIDC
-        uses: pypa/gh-action-pypi-publish@release/v1
+        # pypa/gh-action-pypi-publish release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
         with:
           packages-dir: release-assets/source
           attestations: true
