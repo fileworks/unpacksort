@@ -12,33 +12,30 @@ permissions:
   contents: read
 
 jobs:
+  # Format, lint, typecheck and test are identical across every Python CLI in
+  # the family, so they are defined once in `maintenance` and called here.
+  # Pinned by commit SHA, never by branch: a moving reference here is a moving
+  # reference into this repository's CI. `docs/` records how to unwire it.
+  #
+  # The full 3-OS x 3-Python matrix is preserved — the reusable workflow takes
+  # `runs-on` and `python-version` per entry precisely so this is not quietly
+  # collapsed into one Ubuntu run. Building and installing the wheel stays
+  # local below, as does the dependency audit.
   quality:
     name: quality (${{ matrix.os }}, Python ${{ matrix.python }})
-    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.12", "3.13", "3.14"]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: ${{ matrix.python }}
-      - uses: astral-sh/setup-uv@v9.0.0
-        with:
-          enable-cache: true
-          cache-dependency-glob: uv.lock
-      - name: Install locked development environment
-        run: uv sync --locked --all-groups --python "${{ matrix.python }}"
-      - name: Check formatting
-        run: uv run ruff format --check .
-      - name: Lint
-        run: uv run ruff check .
-      - name: Type check
-        run: uv run mypy
-      - name: Test generated safety corpus
-        run: uv run pytest
+    uses: fileworks/maintenance/.github/workflows/reusable-python-quality.yml@8bb3503084a91c8c1342c218d5562375498a30a5
+    with:
+      runs-on: ${{ matrix.os }}
+      python-version: ${{ matrix.python }}
+      sync-mode: all-groups
+      # This repository audits advisories in its own job below, on one runner
+      # rather than nine.
+      audit: false
 
   build:
     name: installed wheel (${{ matrix.os }}, Python ${{ matrix.python }})
