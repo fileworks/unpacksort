@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -72,7 +73,9 @@ def test_release_workflow_publishes_only_after_artifact_e2e() -> None:
     assert "actions/checkout@v7" in text[text.index("github-release:") :]
     assert "gh release create" in text
     assert text.index("scripts/installed_e2e.py") < text.index("gh release create")
-    assert text.index("gh release create") < text.index("pypa/gh-action-pypi-publish@release/v1")
+    pypi_publish = re.search(r"pypa/gh-action-pypi-publish@[0-9a-f]{40}", text)
+    assert pypi_publish is not None
+    assert text.index("gh release create") < pypi_publish.start()
     assert "fileworks.unpacksort" in text
     assert "HOMEBREW_DISPATCH_ENABLED" in text
 
