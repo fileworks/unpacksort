@@ -12,13 +12,18 @@ from __future__ import annotations
 
 import errno
 import hashlib
+import os
+import shutil
+import subprocess
+import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 from unpacksort.journal import Journal
 from unpacksort.models import Blob
-from unpacksort.storage import BlobStore, PublicationError
+from unpacksort.storage import BlobStore, PublicationError, _commit_without_clobbering
 
 
 @pytest.fixture
@@ -176,3 +181,108 @@ class TestTheHappyPathIsUnchanged:
 
         assert destination.is_file()
         assert destination.read_bytes() == b""
+
+
+#: Resolved to an absolute path so the subprocess calls below name an
+#: executable rather than trusting `PATH` at call time.
+_HDIUTIL = shutil.which("hdiutil")
+
+
+def _exfat_mount(tmp_path: Path) -> Path | None:
+    """Mount a small exFAT image, or return None where that is not possible.
+
+    Skipping on other platforms is deliberate: the point of this class is to run
+    against a filesystem that genuinely cannot hard-link, and a simulated one is
+    already covered above. macOS can build one with `hdiutil` and no privileges.
+    """
+    if sys.platform != "darwin" or _HDIUTIL is None:
+        return None
+    image = tmp_path / "exfat.dmg"
+    mountpoint = tmp_path / "exfat"
+    mountpoint.mkdir()
+    create = subprocess.run(  # noqa: S603
+        [
+            _HDIUTIL,
+            "create",
+            "-size",
+            "20m",
+            "-fs",
+            "exFAT",
+            "-volname",
+            "UPSTEST",
+            "-o",
+            str(image),
+            "-quiet",
+        ],
+        capture_output=True,
+        check=False,
+    )
+    if create.returncode != 0:
+        return None
+    attach = subprocess.run(  # noqa: S603
+        [_HDIUTIL, "attach", str(image), "-mountpoint", str(mountpoint), "-nobrowse"],
+        capture_output=True,
+        check=False,
+    )
+    if attach.returncode != 0:
+        return None
+    return mountpoint
+
+
+@pytest.fixture
+def exfat(tmp_path: Path) -> Iterator[Path]:
+    mountpoint = _exfat_mount(tmp_path)
+    if mountpoint is None:
+        pytest.skip("no exFAT filesystem can be created on this host")
+    try:
+        yield mountpoint
+    finally:
+        assert _HDIUTIL is not None  # the mount above could not have succeeded otherwise
+        subprocess.run(  # noqa: S603
+            [_HDIUTIL, "detach", str(mountpoint), "-force"],
+            capture_output=True,
+            check=False,
+        )
+
+
+class TestTheFallbackOnARealFilesystemThatCannotHardLink:
+    """The same fallback, against exFAT itself rather than a patched `os.link`.
+
+    The class above proves the fallback behaves correctly *given* that hard
+    links fail. It cannot prove the premise: that exFAT is a filesystem where
+    they actually do, and that they fail in the way the `except OSError` clause
+    catches. A monkeypatch raising `EPERM` would pass either way — including if
+    the real error arrived as something the handler never sees.
+    """
+
+    def test_hard_links_really_are_unsupported_there(self, exfat: Path) -> None:
+        source = exfat / "source.bin"
+        source.write_bytes(b"payload")
+
+        with pytest.raises(OSError) as raised:  # noqa: PT011 - the errno is the assertion
+            os.link(source, exfat / "link.bin")
+
+        # ENOTSUP (45 on Darwin), not EPERM — which is why the handler catches
+        # OSError broadly rather than one errno it guessed.
+        assert raised.value.errno == errno.ENOTSUP
+
+    def test_it_publishes_and_leaves_no_temporary_behind(self, exfat: Path) -> None:
+        temporary = exfat / "staged.bin"
+        temporary.write_bytes(b"payload")
+        destination = exfat / "published.bin"
+
+        _commit_without_clobbering(temporary, destination)
+
+        assert destination.read_bytes() == b"payload"
+        assert not temporary.exists()
+
+    def test_it_still_refuses_an_existing_destination(self, exfat: Path) -> None:
+        destination = exfat / "published.bin"
+        destination.write_bytes(b"somebody else's work")
+        temporary = exfat / "staged.bin"
+        temporary.write_bytes(b"the new bytes")
+
+        with pytest.raises(PublicationError, match="refusing to overwrite"):
+            _commit_without_clobbering(temporary, destination)
+
+        assert destination.read_bytes() == b"somebody else's work"
