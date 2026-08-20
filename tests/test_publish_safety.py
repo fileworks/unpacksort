@@ -13,9 +13,9 @@ from __future__ import annotations
 import errno
 import hashlib
 import os
+import platform
 import shutil
 import subprocess
-import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -195,7 +195,10 @@ def _exfat_mount(tmp_path: Path) -> Path | None:
     against a filesystem that genuinely cannot hard-link, and a simulated one is
     already covered above. macOS can build one with `hdiutil` and no privileges.
     """
-    if sys.platform != "darwin" or _HDIUTIL is None:
+    # `platform.system()` rather than `sys.platform`: mypy narrows the latter to
+    # the checking platform, so on Linux it proves this function's body
+    # unreachable and fails the type gate. The runtime behaviour is identical.
+    if platform.system() != "Darwin" or _HDIUTIL is None:
         return None
     image = tmp_path / "exfat.dmg"
     mountpoint = tmp_path / "exfat"
@@ -229,9 +232,11 @@ def _exfat_mount(tmp_path: Path) -> Path | None:
     return mountpoint
 
 
-@pytest.fixture
-def exfat(tmp_path: Path) -> Iterator[Path]:
-    mountpoint = _exfat_mount(tmp_path)
+@pytest.fixture(scope="module")
+def exfat(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+    """Mounted once for the module: attaching an image per test is slow enough to
+    make the suite flaky under contention, and these tests do not share state."""
+    mountpoint = _exfat_mount(tmp_path_factory.mktemp("exfat-image"))
     if mountpoint is None:
         pytest.skip("no exFAT filesystem can be created on this host")
     try:
@@ -256,20 +261,20 @@ class TestTheFallbackOnARealFilesystemThatCannotHardLink:
     """
 
     def test_hard_links_really_are_unsupported_there(self, exfat: Path) -> None:
-        source = exfat / "source.bin"
+        source = exfat / "unsupported-source.bin"
         source.write_bytes(b"payload")
 
         with pytest.raises(OSError) as raised:  # noqa: PT011 - the errno is the assertion
-            os.link(source, exfat / "link.bin")
+            os.link(source, exfat / "unsupported-link.bin")
 
         # ENOTSUP (45 on Darwin), not EPERM — which is why the handler catches
         # OSError broadly rather than one errno it guessed.
         assert raised.value.errno == errno.ENOTSUP
 
     def test_it_publishes_and_leaves_no_temporary_behind(self, exfat: Path) -> None:
-        temporary = exfat / "staged.bin"
+        temporary = exfat / "publish-staged.bin"
         temporary.write_bytes(b"payload")
-        destination = exfat / "published.bin"
+        destination = exfat / "publish-destination.bin"
 
         _commit_without_clobbering(temporary, destination)
 
@@ -277,9 +282,9 @@ class TestTheFallbackOnARealFilesystemThatCannotHardLink:
         assert not temporary.exists()
 
     def test_it_still_refuses_an_existing_destination(self, exfat: Path) -> None:
-        destination = exfat / "published.bin"
+        destination = exfat / "refuse-destination.bin"
         destination.write_bytes(b"somebody else's work")
-        temporary = exfat / "staged.bin"
+        temporary = exfat / "refuse-staged.bin"
         temporary.write_bytes(b"the new bytes")
 
         with pytest.raises(PublicationError, match="refusing to overwrite"):
