@@ -13,7 +13,8 @@ The intended release channels, once the first release is published, are:
 
 - `brew install fileworks/tap/unpacksort`
 - a Windows x64 portable ZIP from GitHub Releases
-- `winget install fileworks.unpacksort`
+- WinGet is not currently available. After the owner CLA and a fresh reviewed
+  manifest are accepted, the official catalog may add `fileworks.unpacksort`.
 
 The initial Windows executable is unsigned. Windows can display a trust warning.
 Compare the file against the release's `SHA256SUMS`; that detects changed bytes
