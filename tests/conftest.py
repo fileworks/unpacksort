@@ -1,12 +1,37 @@
 from __future__ import annotations
 
 import mailbox
+import os
 from collections.abc import Iterator
 from email.message import EmailMessage
 from pathlib import Path
+from typing import Any
 
 import pikepdf
 import pytest
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_configure(config: pytest.Config) -> None:
+    """Keep the opt-in scale command about its production-path budget.
+
+    The scheduled scale workflow already clears the global coverage addopts.
+    A direct focused invocation should have the same meaning: it still reports
+    the exercised lines, but a single scale test cannot satisfy the full-suite
+    90% aggregate threshold. Full-suite invocations retain that threshold.
+    """
+    if os.environ.get("UNPACKSORT_SCALE_TIER") is None:
+        return
+    targets = [
+        argument for argument in config.invocation_params.args if not str(argument).startswith("-")
+    ]
+    if targets and all(
+        Path(str(target).split("::", 1)[0]).name == "test_scale_budgets.py" for target in targets
+    ):
+        config.option.cov_fail_under = 0
+        coverage_plugin: Any = config.pluginmanager.get_plugin("_cov")
+        if coverage_plugin is not None:
+            coverage_plugin.options.cov_fail_under = 0
 
 
 @pytest.fixture
