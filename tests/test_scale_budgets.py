@@ -44,6 +44,16 @@ def _records(total: int) -> Iterator[dict[str, Any]]:
 
 @pytest.mark.scale
 @pytest.mark.skipif(_TIER_TEXT is None, reason="set UNPACKSORT_SCALE_TIER")
+def test_focused_scale_invocation_disables_aggregate_coverage_threshold(
+    pytestconfig: pytest.Config,
+) -> None:
+    """Expose the focused-invocation coverage contract to a subprocess test."""
+
+    assert pytestconfig.option.cov_fail_under == 0
+
+
+@pytest.mark.scale
+@pytest.mark.skipif(_TIER_TEXT is None, reason="set UNPACKSORT_SCALE_TIER")
 def test_generated_inventory_plan_and_report_stay_disk_backed(tmp_path: Path) -> None:
     """Exercise the real inventory, planner, journal cursors, and report writer."""
 
