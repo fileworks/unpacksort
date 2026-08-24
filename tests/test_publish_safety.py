@@ -27,8 +27,12 @@ from unpacksort.storage import BlobStore, PublicationError, _commit_without_clob
 
 
 @pytest.fixture
-def store(tmp_path: Path) -> BlobStore:
-    return BlobStore(Journal(tmp_path / "destination"))
+def store(tmp_path: Path) -> Iterator[BlobStore]:
+    journal = Journal(tmp_path / "destination")
+    try:
+        yield BlobStore(journal)
+    finally:
+        journal.close()
 
 
 def _staged(store: BlobStore, payload: bytes) -> Blob:
