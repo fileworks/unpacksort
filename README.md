@@ -67,8 +67,8 @@ and [security policy](SECURITY.md).
 
 Inputs are treated as personal but potentially malformed. Extraction is bounded,
 staged privately, content-addressed, and published atomically. Archive paths
-never directly control public paths. The initial release does not isolate parsers
-in a process or VM and is not a malware scanner.
+never directly control public paths. The application does not isolate parsers in
+a process or VM and is not a malware scanner.
 
 ## Usage
 

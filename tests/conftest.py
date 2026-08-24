@@ -22,9 +22,10 @@ def pytest_configure(config: pytest.Config) -> None:
     """
     if os.environ.get("UNPACKSORT_SCALE_TIER") is None:
         return
-    targets = [
-        argument for argument in config.invocation_params.args if not str(argument).startswith("-")
-    ]
+    # ``Config.args`` contains pytest's parsed positional collection targets.
+    # Raw invocation tokens also contain option values such as
+    # ``-p no:cacheprovider``, which must never be mistaken for a test path.
+    targets = config.args
     if targets and all(
         Path(str(target).split("::", 1)[0]).name == "test_scale_budgets.py" for target in targets
     ):

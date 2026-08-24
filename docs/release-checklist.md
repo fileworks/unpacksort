@@ -16,6 +16,13 @@ closed unmerged with Needs-CLA on 2026-08-16. The owner must complete the
 Microsoft CLA and submit a fresh reviewed manifest; that legal declaration
 cannot be automated or made by a release workflow.
 
+On 2026-08-24, the immutable PyPI 1.1.6 files and JSON metadata still identify
+version 1.1.6 and its trusted-publishing provenance, but their embedded long
+description is the release-time README: it says 1.1.5 is current and describes
+the now-closed WinGet PR as under review. Do not replace or rewrite the
+published files. The repository README and manual contain the corrected current
+state; the next ordinary version will carry that text into PyPI metadata.
+
 Record the release version, tag, workflow run URLs, operator, and results.
 
 ## Reservation and protection

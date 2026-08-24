@@ -9,7 +9,7 @@ pipx install unpacksort
 unpacksort --help
 ```
 
-The intended release channels, once the first release is published, are:
+The current release channels are:
 
 - `brew install fileworks/tap/unpacksort`
 - a Windows x64 portable ZIP from GitHub Releases
@@ -128,7 +128,7 @@ claimed as extracted.
 
 ## Containers and ZIP application packages
 
-The initial release expands these formats in-process:
+The current version expands these formats in-process:
 
 - ZIP and ZIP64;
 - TAR, TAR+gzip, TAR+bzip2, TAR+xz, and TAR+zstandard;
