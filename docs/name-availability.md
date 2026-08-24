@@ -5,10 +5,10 @@ The exact name `unpacksort` was rechecked before repository creation on
 
 | Channel | Exact identifier | Result |
 | --- | --- | --- |
-| GitHub | `fileworks/unpacksort` | Reserved; v1.1.0 published |
-| PyPI | `unpacksort` | Reserved; 1.1.0 published with trusted publishing |
-| Homebrew tap | `fileworks/tap/unpacksort` | Reserved; 1.1.0 formula published |
-| WinGet | `fileworks.unpacksort` | Initial manifest under Microsoft review ([PR 410897](https://github.com/microsoft/winget-pkgs/pull/410897)) |
+| GitHub | `fileworks/unpacksort` | Reserved; v1.1.6 published |
+| PyPI | `unpacksort` | Reserved; 1.1.6 published with trusted publishing |
+| Homebrew tap | `fileworks/tap/unpacksort` | Reserved; 1.1.6 formula published |
+| WinGet | `fileworks.unpacksort` | Unavailable: bootstrap PR 410897 closed unmerged with Needs-CLA; owner CLA and a fresh reviewed submission are prerequisites |
 | npm | `unpacksort` | No package |
 | crates.io | `unpacksort` | No crate |
 | RubyGems | `unpacksort` | No gem |
@@ -16,5 +16,6 @@ The exact name `unpacksort` was rechecked before repository creation on
 
 A broader exact-quoted web screen also returned no conflicting project. These
 are dated observations. GitHub, PyPI, and the tap are now reserved by accepted
-publication. The WinGet identity is not reserved until Microsoft accepts the
-first manifest; automation must stop on any collision.
+publication. The WinGet identity remains unavailable until the owner CLA and a
+fresh Microsoft-reviewed manifest are accepted; automation must stop on any
+collision.

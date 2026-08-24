@@ -10,12 +10,11 @@ every public asset was downloaded again, checksum/type/layout verified, the
 PyPI wheel and sdist attestations were cryptographically verified against
 `fileworks/unpacksort`, and the exact public package passed an isolated pipx
 archive-extraction smoke test.
-The initial WinGet manifest is under review in
-[`microsoft/winget-pkgs#410897`](https://github.com/microsoft/winget-pkgs/pull/410897).
-Microsoft's validation pipeline accepted the manifest on 2026-08-01. The
-remaining gates are moderator approval and the account owner's Microsoft CLA
-attestation. That legal declaration cannot be automated or made by a release
-workflow.
+The bootstrap WinGet manifest PR
+[`microsoft/winget-pkgs#410897`](https://github.com/microsoft/winget-pkgs/pull/410897)
+closed unmerged with Needs-CLA on 2026-08-16. The owner must complete the
+Microsoft CLA and submit a fresh reviewed manifest; that legal declaration
+cannot be automated or made by a release workflow.
 
 Record the release version, tag, workflow run URLs, operator, and results.
 
@@ -64,11 +63,11 @@ Record the release version, tag, workflow run URLs, operator, and results.
       extraction/manifest formula test pass on a clean machine.
 - [x] WinGet templates validate the immutable URL/SHA, nested portable path,
       x64 architecture, identifier, and `unpacksort` alias.
-- [x] Record the Homebrew PR and WinGet bootstrap as the visible external
-      follow-up.
-- [ ] Obtain acceptance for the submitted initial `fileworks.unpacksort`
-      [WinGet manifest](https://github.com/microsoft/winget-pkgs/pull/410897).
-      The manifest validation passed; the PR is waiting for the account owner's
-      CLA declaration and Microsoft moderator approval.
+- [x] Record the Homebrew PR and the closed WinGet bootstrap attempt as the
+      visible external follow-up.
+- [ ] WinGet is unavailable: the initial
+      [bootstrap PR](https://github.com/microsoft/winget-pkgs/pull/410897)
+      closed unmerged with Needs-CLA. The owner must complete the Microsoft CLA
+      and submit a fresh manifest for review; no catalog acceptance is claimed.
 - [ ] After catalog acceptance, enable and verify automated WinGet update
       submissions as documented in `release.md`.

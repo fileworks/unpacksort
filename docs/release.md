@@ -4,8 +4,9 @@
 
 - Protected `main` accepts reviewed pull requests and required quality checks.
 - Conventional Commits determine Semantic Versioning and update the changelog.
-- A version, tag, PyPI files, GitHub files, checksum file, portable ZIP, formula,
-  and WinGet manifest must agree exactly.
+- A version, tag, PyPI files, GitHub files, checksum file, portable ZIP, and
+  formula must agree exactly; WinGet joins that set only after its unavailable
+  bootstrap state is cleared through a fresh reviewed submission.
 - Published versions and assets are immutable. Repair defects with a new
   version; never replace an existing release file.
 - Initial executable artifacts are unsigned. Release notes must repeat the trust
@@ -73,7 +74,9 @@ For every release:
 1. Confirm the trusted publisher still names this repository, workflow, and
    environment.
 2. Confirm the candidate wheel installs in the source-distribution E2E job.
-3. Confirm the GitHub tag/version does not already exist.
+3. Keep WinGet disabled until the owner CLA is complete and a fresh manifest has
+   passed Microsoft review; the bootstrap PR 410897 is closed and unmerged.
+4. Confirm the GitHub tag/version does not already exist.
 
 After publication:
 
@@ -148,9 +151,9 @@ python scripts/render_winget.py \
 Validate the result with current `wingetcreate` and submit the first package
 through a reviewed manual WinGet PR. Version 1.1.0 was submitted in
 [`microsoft/winget-pkgs#410897`](https://github.com/microsoft/winget-pkgs/pull/410897).
-Microsoft's automated manifest validation passed on 2026-08-01. The identity is
-not reserved until Microsoft accepts that PR; the remaining account-owner CLA
-attestation is a legal declaration and therefore cannot be delegated to CI.
+The bootstrap PR closed unmerged with Needs-CLA on 2026-08-16. WinGet is
+unavailable until the owner completes the Microsoft CLA and submits a fresh
+manifest for review; no identity reservation or catalog acceptance is claimed.
 
 After bootstrap acceptance, create the protected `winget` environment, add the
 dedicated `WINGET_TOKEN`, and set repository variable
