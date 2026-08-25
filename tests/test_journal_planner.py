@@ -74,6 +74,33 @@ def test_future_journal_schema_is_rejected(tmp_path: Path) -> None:
         Journal(tmp_path / "destination")
 
 
+def test_a_future_journal_is_refused_without_being_touched(tmp_path: Path) -> None:
+    """Refusing is not enough — the refusal must leave the file alone.
+
+    `PRAGMA journal_mode = WAL` converts the database and creates `-wal`/`-shm`
+    siblings. Running it before reading `user_version` meant an older build
+    modified a journal it had already decided it could not understand.
+    """
+    state = tmp_path / "destination" / ".unpacksort"
+    state.mkdir(parents=True)
+    database = state / "journal.sqlite"
+    connection = sqlite3.connect(database)
+    connection.execute("PRAGMA journal_mode = DELETE")
+    connection.execute("PRAGMA user_version = 99")
+    connection.close()
+    before_bytes = database.read_bytes()
+    before_stat = database.stat()
+
+    with pytest.raises(StateConflictError, match="schema 99"):
+        Journal(tmp_path / "destination")
+
+    assert database.read_bytes() == before_bytes
+    assert database.stat().st_mtime_ns == before_stat.st_mtime_ns
+    assert database.stat().st_size == before_stat.st_size
+    siblings = sorted(path.name for path in state.iterdir())
+    assert siblings == ["journal.sqlite"]
+
+
 def test_blob_store_deduplicates_and_cleans_incomplete_files(tmp_path: Path) -> None:
     with Journal(tmp_path / "destination") as journal:
         store = BlobStore(journal)
