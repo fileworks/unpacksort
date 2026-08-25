@@ -192,18 +192,26 @@ class TestTheHappyPathIsUnchanged:
 _HDIUTIL = shutil.which("hdiutil")
 
 
-def _exfat_mount(tmp_path: Path) -> Path | None:
-    """Mount a small exFAT image, or return None where that is not possible.
+def _exfat_mount(tmp_path: Path) -> tuple[Path | None, str]:
+    """Mount a small exFAT image, or say precisely why that was not possible.
 
     Skipping on other platforms is deliberate: the point of this class is to run
     against a filesystem that genuinely cannot hard-link, and a simulated one is
     already covered above. macOS can build one with `hdiutil` and no privileges.
+
+    The reason is returned rather than collapsed into `None` because the two
+    causes are not the same event. "This platform has no exFAT" is the designed
+    outcome; "hdiutil failed on a host that should have managed it" is a lost
+    piece of the fallback evidence, and reporting both as one message made a
+    transient failure on the macOS runner indistinguishable from a Linux skip.
     """
     # `platform.system()` rather than `sys.platform`: mypy narrows the latter to
     # the checking platform, so on Linux it proves this function's body
     # unreachable and fails the type gate. The runtime behaviour is identical.
-    if platform.system() != "Darwin" or _HDIUTIL is None:
-        return None
+    if platform.system() != "Darwin":
+        return None, "exFAT evidence is collected on macOS, which can build one unprivileged"
+    if _HDIUTIL is None:
+        return None, "hdiutil is not on PATH on this macOS host"
     image = tmp_path / "exfat.dmg"
     mountpoint = tmp_path / "exfat"
     mountpoint.mkdir()
@@ -225,24 +233,28 @@ def _exfat_mount(tmp_path: Path) -> Path | None:
         check=False,
     )
     if create.returncode != 0:
-        return None
+        return None, f"hdiutil create failed: {_stderr(create)}"
     attach = subprocess.run(  # noqa: S603
         [_HDIUTIL, "attach", str(image), "-mountpoint", str(mountpoint), "-nobrowse"],
         capture_output=True,
         check=False,
     )
     if attach.returncode != 0:
-        return None
-    return mountpoint
+        return None, f"hdiutil attach failed: {_stderr(attach)}"
+    return mountpoint, ""
+
+
+def _stderr(completed: subprocess.CompletedProcess[bytes]) -> str:
+    return completed.stderr.decode("utf-8", "replace").strip() or "no diagnostic output"
 
 
 @pytest.fixture(scope="module")
 def exfat(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
     """Mounted once for the module: attaching an image per test is slow enough to
     make the suite flaky under contention, and these tests do not share state."""
-    mountpoint = _exfat_mount(tmp_path_factory.mktemp("exfat-image"))
+    mountpoint, reason = _exfat_mount(tmp_path_factory.mktemp("exfat-image"))
     if mountpoint is None:
-        pytest.skip("no exFAT filesystem can be created on this host")
+        pytest.skip(reason)
     try:
         yield mountpoint
     finally:
