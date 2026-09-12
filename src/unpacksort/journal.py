@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Iterable, Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from itertools import zip_longest
 from pathlib import Path
 from typing import Any, Self
@@ -14,6 +14,32 @@ from unpacksort.models import Blob, ContainerRecord, Occurrence, SourceIdentity
 from unpacksort.policy import Policy
 
 SCHEMA_VERSION = 1
+
+
+def _assert_supported_schema(current: int) -> None:
+    """Accept only a fresh journal or one this build wrote."""
+    if current not in {0, SCHEMA_VERSION}:
+        msg = f"journal schema {current} is incompatible with {SCHEMA_VERSION}"
+        raise StateConflictError(msg)
+
+
+def _refuse_unsupported_schema(path: Path) -> None:
+    """Read an existing journal's version without opening it for writing.
+
+    The read-only URI runs no PRAGMA that can convert the journal mode, so a
+    journal written by a newer build is refused with its bytes and its existing
+    SQLite siblings exactly as they were found.
+    """
+    if not path.is_file() or path.stat().st_size == 0:
+        return
+    read_only = f"{path.resolve().as_uri()}?mode=ro"
+    try:
+        with closing(sqlite3.connect(read_only, uri=True)) as connection:
+            current = int(connection.execute("PRAGMA user_version").fetchone()[0])
+    except sqlite3.DatabaseError as exc:
+        msg = f"journal at {path} could not be read: {exc}"
+        raise StateConflictError(msg) from exc
+    _assert_supported_schema(current)
 
 
 class StateConflictError(Exception):
@@ -28,6 +54,11 @@ class Journal:
         self.state_dir = destination / ".unpacksort"
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.path = self.state_dir / "journal.sqlite"
+        # Before the connection, not after: `PRAGMA journal_mode = WAL` below
+        # converts the file and creates `-wal`/`-shm` siblings, so checking the
+        # version afterwards would modify a journal this build has already
+        # decided it cannot understand.
+        _refuse_unsupported_schema(self.path)
         self._connection = sqlite3.connect(self.path)
         self._connection.row_factory = sqlite3.Row
         self._connection.execute("PRAGMA journal_mode = WAL")
@@ -65,10 +96,9 @@ class Journal:
             self._connection.commit()
 
     def _initialize(self) -> None:
-        current = int(self._connection.execute("PRAGMA user_version").fetchone()[0])
-        if current not in {0, SCHEMA_VERSION}:
-            msg = f"journal schema {current} is incompatible with {SCHEMA_VERSION}"
-            raise StateConflictError(msg)
+        # Checked again on the handle that will actually write: the preflight
+        # read a different descriptor, and this is the destructive boundary.
+        _assert_supported_schema(int(self._connection.execute("PRAGMA user_version").fetchone()[0]))
         with self.transaction() as connection:
             connection.executescript(
                 """

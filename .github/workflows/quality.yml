@@ -70,6 +70,33 @@ jobs:
           fi
           python scripts/installed_e2e.py --command "$command_path"
 
+  exfat-evidence:
+    name: exFAT hard-link fallback evidence
+    # `_commit_without_clobbering` falls back from `os.link` to a check-and-
+    # replace on filesystems that cannot hard-link, and the only thing proving
+    # that premise is a real exFAT volume. The fixture builds one with
+    # `hdiutil`, so a transient failure there silently skipped the three tests
+    # and the run stayed green with the evidence missing. pytest exits 0 on a
+    # skip, so the summary is inspected rather than trusted — the same shape
+    # `maintenance` uses for its branding job.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      # astral-sh/setup-uv v9.0.0
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+      - name: Install locked environment
+        run: uv sync --locked --all-groups
+      - name: Run the exFAT suite, failing if any of it skips
+        run: |
+          set -o pipefail
+          uv run pytest -q -rs --no-cov \
+            tests/test_publish_safety.py::TestTheFallbackOnARealFilesystemThatCannotHardLink \
+            | tee pytest.log
+          if grep -qE '[0-9]+ skipped' pytest.log; then
+            echo "::error::exFAT fallback evidence skipped on the runner that must produce it"
+            exit 1
+          fi
+
   dependency-audit:
     name: dependency audit
     runs-on: ubuntu-latest

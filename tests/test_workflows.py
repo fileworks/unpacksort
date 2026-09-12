@@ -21,6 +21,7 @@ def test_quality_workflow_has_cross_platform_version_and_artifact_gates() -> Non
     assert set(jobs) == {
         "quality",
         "build",
+        "exfat-evidence",
         "dependency-audit",
         "docs-links",
     }
@@ -36,6 +37,25 @@ def test_quality_workflow_has_cross_platform_version_and_artifact_gates() -> Non
     text = (Path(".github/workflows") / "quality.yml").read_text(encoding="utf-8")
     assert "scripts/installed_e2e.py" in text
     assert "uv run pip-audit" in text
+
+
+def test_the_exfat_evidence_job_treats_a_skip_as_a_failure() -> None:
+    """The fallback's premise is proven by a real exFAT volume or not at all.
+
+    `hdiutil` can fail transiently, and the fixture then skips all three tests.
+    pytest exits 0 on a skip, so without this the run stayed green with the
+    evidence missing — the same silence `maintenance` broke for its branding
+    job.
+    """
+    jobs = _workflow("quality.yml")["jobs"]
+    assert isinstance(jobs, dict)
+    job = jobs["exfat-evidence"]
+
+    assert job["runs-on"] == "macos-latest"
+    body = "\n".join(str(step.get("run", "")) for step in job["steps"])
+    assert "TestTheFallbackOnARealFilesystemThatCannotHardLink" in body
+    assert "skipped" in body
+    assert "exit 1" in body
 
 
 def test_scale_workflow_is_scheduled_without_skipping_main_quality_jobs() -> None:
