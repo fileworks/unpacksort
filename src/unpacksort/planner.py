@@ -100,6 +100,12 @@ class _PlannerState:
                 digest TEXT NOT NULL,
                 PRIMARY KEY (directory_key, name_key)
             );
+            CREATE TABLE file_allocation_cursors (
+                directory_key TEXT NOT NULL,
+                basename_key TEXT NOT NULL,
+                next_suffix INTEGER NOT NULL,
+                PRIMARY KEY (directory_key, basename_key)
+            );
             CREATE TABLE directory_assignments (
                 parent_key TEXT NOT NULL,
                 assignment_key TEXT NOT NULL,
@@ -152,6 +158,27 @@ class _PlannerState:
         self._connection.execute(
             "INSERT INTO occupied_files(directory_key, name_key, digest) VALUES (?, ?, ?)",
             (directory_key, name_key, digest),
+        )
+
+    def file_allocation_cursor(self, directory_key: str, basename_key: str) -> int:
+        row = self._connection.execute(
+            "SELECT next_suffix FROM file_allocation_cursors "
+            "WHERE directory_key = ? AND basename_key = ?",
+            (directory_key, basename_key),
+        ).fetchone()
+        return 0 if row is None else int(row[0])
+
+    def set_file_allocation_cursor(
+        self,
+        directory_key: str,
+        basename_key: str,
+        next_suffix: int,
+    ) -> None:
+        self._connection.execute(
+            "INSERT INTO file_allocation_cursors(directory_key, basename_key, next_suffix) "
+            "VALUES (?, ?, ?) ON CONFLICT(directory_key, basename_key) DO UPDATE SET "
+            "next_suffix = excluded.next_suffix",
+            (directory_key, basename_key, next_suffix),
         )
 
     def directory_assignment(
@@ -215,15 +242,16 @@ def _assign_path(
     )
     directory = "/".join(directory_parts)
     directory_key = collision_key(directory)
-    requested_key = collision_key(requested_name)
-    chosen = requested_name
-    suffix = 0
-    prior_digest = state.file_digest(directory_key, requested_key)
+    basename_key = collision_key(requested_name)
+    suffix = state.file_allocation_cursor(directory_key, basename_key)
+    chosen = requested_name if suffix == 0 else suffixed_name(requested_name, suffix)
+    candidate_key = collision_key(chosen)
+    prior_digest = state.file_digest(directory_key, candidate_key)
     while prior_digest is not None and prior_digest != digest:
         suffix += 1
         chosen = suffixed_name(requested_name, suffix)
-        requested_key = collision_key(chosen)
-        prior_digest = state.file_digest(directory_key, requested_key)
+        candidate_key = collision_key(chosen)
+        prior_digest = state.file_digest(directory_key, candidate_key)
     if suffix:
         metadata = dict(record.get("metadata") or {})
         adjustments = filter(
@@ -235,7 +263,8 @@ def _assign_path(
         )
         record["metadata"] = metadata
     if prior_digest is None:
-        state.occupy_file(directory_key, requested_key, digest)
+        state.occupy_file(directory_key, candidate_key, digest)
+        state.set_file_allocation_cursor(directory_key, basename_key, suffix + 1)
     return bounded_relative_path(
         [*directory_parts, chosen],
         protected_prefix=len(group_parts),
