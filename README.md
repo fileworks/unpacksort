@@ -12,7 +12,7 @@ and retained as unprocessed; source links and archive links are never followed.
 
 ## Status
 
-**Published.** Version 1.1.6 is available from PyPI, the official GitHub
+**Published.** Version 1.1.7 is available from PyPI, the official GitHub
 Release, including the unsigned Windows x64 portable ZIP, and the Homebrew
 formula. WinGet is not currently available: bootstrap PR 410897 closed
 unmerged with Needs-CLA. The owner CLA and a fresh reviewed submission are
