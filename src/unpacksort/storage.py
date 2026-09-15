@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import stat
+import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from io import BytesIO
@@ -130,10 +132,11 @@ class BlobStore:
 
         `C-13`. The engine checks the destination before calling this, and that
         check is a different thing from this one: it can only speak for the
-        moment it ran. `os.replace` is atomic but not *conditional*, so anything
-        that appeared in the window between the check and the write was
-        destroyed without a word — and this is the one method in the program
-        that writes into a directory the user owns.
+        moment it ran. The final name is created with a same-directory hard link,
+        which is conditional: anything that appeared in the window between the
+        check and the write makes the link fail without destroying it. A
+        filesystem without that primitive is refused rather than weakened to a
+        check-then-replace operation.
 
         The copy is also re-hashed before it is published, for the same reason
         `ingest_stream` hashes what it writes: bytes that have travelled through
@@ -142,49 +145,86 @@ class BlobStore:
         """
 
         destination.parent.mkdir(parents=True, exist_ok=True)
-        temporary = destination.with_name(f".{destination.name}.unpacksort.tmp")
-        temporary.unlink(missing_ok=True)
+        temporary: Path | None = None
         try:
-            digest = hashlib.sha256()
-            with blob.path.open("rb") as source, temporary.open("xb") as target:
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=f".{destination.name}.unpacksort-",
+                suffix=".tmp",
+                dir=destination.parent,
+            )
+            temporary = Path(temporary_name)
+            with os.fdopen(descriptor, "wb") as target, blob.path.open("rb") as source:
                 while chunk := source.read(CHUNK_SIZE):
-                    digest.update(chunk)
                     target.write(chunk)
                 target.flush()
                 os.fsync(target.fileno())
-            written = digest.hexdigest()
-            if written != blob.digest:
+            written, written_size = _hash_closed_stage(temporary)
+            if written != blob.digest or written_size != blob.size:
                 mismatch = (
                     f"published copy does not match its blob: expected "
-                    f"{blob.digest}, wrote {written}"
+                    f"{blob.digest} ({blob.size} bytes), wrote "
+                    f"{written} ({written_size} bytes)"
                 )
                 raise PublicationError(mismatch)
             _commit_without_clobbering(temporary, destination)
             _fsync_directory(destination.parent)
         except BaseException:
-            temporary.unlink(missing_ok=True)
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
             raise
 
 
-def _commit_without_clobbering(temporary: Path, destination: Path) -> None:
-    """Move *temporary* onto *destination*, refusing if something is there.
+def _hash_closed_stage(path: Path) -> tuple[str, int]:
+    """Hash a private stage through a descriptor that does not follow links."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        message = f"cannot safely reopen staged copy: {exc}"
+        raise PublicationError(message) from exc
 
-    `os.link` is the race-free form: it creates the name or fails, with no
-    window in between. Filesystems that cannot hard-link (exFAT, some network
-    mounts) fall back to a check and a replace, which narrows the window without
-    closing it — stated plainly rather than papered over, because the fallback
-    is the weaker guarantee and a reader deserves to know which one they got.
+    with os.fdopen(descriptor, "rb") as source:
+        opened = os.fstat(source.fileno())
+        try:
+            named = path.lstat()
+        except OSError as exc:
+            message = "staged copy pathname changed before verification"
+            raise PublicationError(message) from exc
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or stat.S_ISLNK(named.st_mode)
+            or named.st_dev != opened.st_dev
+            or named.st_ino != opened.st_ino
+        ):
+            message = "staged copy is not the owned regular file"
+            raise PublicationError(message)
+        digest = hashlib.sha256()
+        size = 0
+        while chunk := source.read(CHUNK_SIZE):
+            digest.update(chunk)
+            size += len(chunk)
+        if os.fstat(source.fileno()).st_size != size:
+            message = "staged copy changed while it was verified"
+            raise PublicationError(message)
+        return digest.hexdigest(), size
+
+
+def _commit_without_clobbering(temporary: Path, destination: Path) -> None:
+    """Create *destination* as a second name for *temporary*, or fail closed.
+
+    `os.link` is the only publication primitive used here: it creates the name
+    or fails, with no window in between. Filesystems that cannot hard-link
+    (exFAT, some network mounts) are refused because a check followed by
+    replacement could destroy another writer's file.
     """
     occupied = f"refusing to overwrite an existing file: {destination}"
     try:
         os.link(temporary, destination)
     except FileExistsError:
         raise PublicationError(occupied) from None
-    except OSError:
-        if destination.exists():
-            raise PublicationError(occupied) from None
-        temporary.replace(destination)
-        return
+    except OSError as exc:
+        unavailable = f"atomic no-replace publication is unavailable on this filesystem: {exc}"
+        raise PublicationError(unavailable) from exc
     temporary.unlink()
 
 

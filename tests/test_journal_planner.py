@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from hypothesis import given
@@ -18,7 +20,7 @@ from unpacksort.models import (
     SourceIdentity,
     Status,
 )
-from unpacksort.planner import freeze_plan
+from unpacksort.planner import _PlannerState, freeze_plan, iter_freeze_plan
 from unpacksort.policy import Policy
 from unpacksort.storage import BlobStore
 
@@ -130,6 +132,42 @@ def test_flatten_collisions_and_duplicates_are_exact() -> None:
     ]
     assert plan[2]["metadata"]["path_adjustments"] == "name_collision_suffix"
     assert plan[1]["status"] == Status.DUPLICATE.value
+
+
+def test_streamed_repeated_names_use_bounded_candidate_lookups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep repeated-name planning on the linear SQLite lookup path."""
+    candidate_lookups = 0
+    original_file_digest = _PlannerState.file_digest
+
+    def counted_file_digest(
+        state: _PlannerState,
+        directory_key: str,
+        name_key: str,
+    ) -> str | None:
+        nonlocal candidate_lookups
+        candidate_lookups += 1
+        return original_file_digest(state, directory_key, name_key)
+
+    monkeypatch.setattr(_PlannerState, "file_digest", counted_file_digest)
+    total = 256
+
+    def records() -> Iterator[dict[str, Any]]:
+        for index in range(total):
+            yield _occurrence(
+                f"occurrence-{index:04d}",
+                name="invoice.pdf",
+                digest=f"{index:064x}",
+            ).to_record()
+
+    plan = list(iter_freeze_plan(records(), Policy(layout="flatten")))
+
+    assert [record["canonical_path"] for record in plan] == [
+        "documents/invoice.pdf" if index == 0 else f"documents/invoice_{index}.pdf"
+        for index in range(total)
+    ]
+    assert candidate_lookups == total
 
 
 def test_hierarchy_is_portable_and_pdf_only_does_not_publish_unprocessed() -> None:

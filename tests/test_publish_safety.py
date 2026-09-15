@@ -18,6 +18,7 @@ import shutil
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any, BinaryIO, cast
 
 import pytest
 
@@ -53,6 +54,20 @@ class TestItRefusesToOverwrite:
 
         assert destination.read_bytes() == b"somebody else's work"
 
+    def test_a_pre_existing_temporary_name_is_left_untouched(
+        self, store: BlobStore, tmp_path: Path
+    ) -> None:
+        blob = _staged(store, b"the new bytes")
+        destination = tmp_path / "out" / "file.txt"
+        destination.parent.mkdir(parents=True)
+        temporary = destination.with_name(f".{destination.name}.unpacksort.tmp")
+        temporary.write_bytes(b"unrelated staging data")
+
+        store.publish(blob, destination)
+
+        assert temporary.read_bytes() == b"unrelated staging data"
+        assert destination.read_bytes() == b"the new bytes"
+
     def test_it_leaves_no_temporary_behind_when_it_refuses(
         self, store: BlobStore, tmp_path: Path
     ) -> None:
@@ -79,11 +94,8 @@ class TestItRefusesToOverwrite:
             store.publish(blob, destination)
 
 
-class TestTheFallbackForFilesystemsWithoutHardLinks:
-    """exFAT and some network mounts cannot hard-link, so `publish` falls back to
-    a check and a replace. That path never runs on this host, which is exactly
-    why it needs a test: an untested fallback is where the guarantee quietly
-    stops holding."""
+class TestNoHardLinkFilesystemsFailClosed:
+    """A filesystem without conditional publication support must be refused."""
 
     @staticmethod
     def _no_hard_links(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -101,25 +113,67 @@ class TestTheFallbackForFilesystemsWithoutHardLinks:
         destination.parent.mkdir(parents=True)
         destination.write_bytes(b"somebody else's work")
 
-        with pytest.raises(PublicationError, match="refusing to overwrite"):
+        with pytest.raises(PublicationError, match="atomic no-replace publication"):
             store.publish(blob, destination)
 
         assert destination.read_bytes() == b"somebody else's work"
 
-    def test_it_still_publishes_when_the_destination_is_free(
+    def test_it_refuses_to_publish_when_the_destination_is_free(
         self, store: BlobStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         self._no_hard_links(monkeypatch)
         blob = _staged(store, b"payload")
         destination = tmp_path / "out" / "file.txt"
 
-        store.publish(blob, destination)
+        with pytest.raises(PublicationError, match="atomic no-replace publication"):
+            store.publish(blob, destination)
 
-        assert destination.read_bytes() == b"payload"
-        assert sorted(path.name for path in destination.parent.iterdir()) == ["file.txt"]
+        assert not destination.exists()
+        assert blob.path.read_bytes() == b"payload"
 
 
 class TestItProvesTheCopy:
+    def test_corruption_after_stage_fsync_is_refused(
+        self, store: BlobStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        blob = _staged(store, b"GOOD")
+        destination = tmp_path / "out" / "file.txt"
+        original_open = Path.open
+        original_fdopen = os.fdopen
+        original_fsync = os.fsync
+        staged_handle: BinaryIO | None = None
+
+        def capture_stage(path: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+            nonlocal staged_handle
+            handle = original_open(path, mode, *args, **kwargs)
+            if mode in {"xb", "wb"}:
+                staged_handle = cast("BinaryIO", handle)
+            return handle
+
+        def capture_fdopen(fd: int, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+            nonlocal staged_handle
+            handle = original_fdopen(fd, mode, *args, **kwargs)
+            if mode == "wb":
+                staged_handle = cast("BinaryIO", handle)
+            return handle
+
+        def corrupt_after_fsync(fd: int) -> None:
+            original_fsync(fd)
+            assert staged_handle is not None
+            staged_handle.seek(0)
+            staged_handle.truncate()
+            staged_handle.write(b"EVIL")
+            staged_handle.flush()
+
+        monkeypatch.setattr(Path, "open", capture_stage)
+        monkeypatch.setattr(os, "fdopen", capture_fdopen)
+        monkeypatch.setattr(os, "fsync", corrupt_after_fsync)
+
+        with pytest.raises(PublicationError, match="does not match its blob"):
+            store.publish(blob, destination)
+
+        assert not destination.exists()
+
     def test_a_blob_whose_bytes_do_not_match_its_digest_is_refused(
         self, store: BlobStore, tmp_path: Path
     ) -> None:
@@ -202,7 +256,7 @@ def _exfat_mount(tmp_path: Path) -> tuple[Path | None, str]:
     The reason is returned rather than collapsed into `None` because the two
     causes are not the same event. "This platform has no exFAT" is the designed
     outcome; "hdiutil failed on a host that should have managed it" is a lost
-    piece of the fallback evidence, and reporting both as one message made a
+    piece of the no-replace evidence, and reporting both as one message made a
     transient failure on the macOS runner indistinguishable from a Linux skip.
     """
     # `platform.system()` rather than `sys.platform`: mypy narrows the latter to
@@ -266,11 +320,11 @@ def exfat(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
         )
 
 
-class TestTheFallbackOnARealFilesystemThatCannotHardLink:
-    """The same fallback, against exFAT itself rather than a patched `os.link`.
+class TestNoHardLinksOnRealFilesystem:
+    """The same fail-closed path, against exFAT itself rather than a patched `os.link`.
 
-    The class above proves the fallback behaves correctly *given* that hard
-    links fail. It cannot prove the premise: that exFAT is a filesystem where
+    The class above proves the refusal *given* that hard links fail. It cannot
+    prove the premise: that exFAT is a filesystem where
     they actually do, and that they fail in the way the `except OSError` clause
     catches. A monkeypatch raising `EPERM` would pass either way — including if
     the real error arrived as something the handler never sees.
@@ -287,15 +341,16 @@ class TestTheFallbackOnARealFilesystemThatCannotHardLink:
         # OSError broadly rather than one errno it guessed.
         assert raised.value.errno == errno.ENOTSUP
 
-    def test_it_publishes_and_leaves_no_temporary_behind(self, exfat: Path) -> None:
+    def test_it_refuses_to_publish_when_the_destination_is_free(self, exfat: Path) -> None:
         temporary = exfat / "publish-staged.bin"
         temporary.write_bytes(b"payload")
         destination = exfat / "publish-destination.bin"
 
-        _commit_without_clobbering(temporary, destination)
+        with pytest.raises(PublicationError, match="atomic no-replace publication"):
+            _commit_without_clobbering(temporary, destination)
 
-        assert destination.read_bytes() == b"payload"
-        assert not temporary.exists()
+        assert not destination.exists()
+        assert temporary.read_bytes() == b"payload"
 
     def test_it_still_refuses_an_existing_destination(self, exfat: Path) -> None:
         destination = exfat / "refuse-destination.bin"
