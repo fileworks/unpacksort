@@ -18,6 +18,7 @@ import shutil
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any, BinaryIO, cast
 
 import pytest
 
@@ -52,6 +53,20 @@ class TestItRefusesToOverwrite:
             store.publish(blob, destination)
 
         assert destination.read_bytes() == b"somebody else's work"
+
+    def test_a_pre_existing_temporary_name_is_left_untouched(
+        self, store: BlobStore, tmp_path: Path
+    ) -> None:
+        blob = _staged(store, b"the new bytes")
+        destination = tmp_path / "out" / "file.txt"
+        destination.parent.mkdir(parents=True)
+        temporary = destination.with_name(f".{destination.name}.unpacksort.tmp")
+        temporary.write_bytes(b"unrelated staging data")
+
+        store.publish(blob, destination)
+
+        assert temporary.read_bytes() == b"unrelated staging data"
+        assert destination.read_bytes() == b"the new bytes"
 
     def test_it_leaves_no_temporary_behind_when_it_refuses(
         self, store: BlobStore, tmp_path: Path
@@ -120,6 +135,47 @@ class TestTheFallbackForFilesystemsWithoutHardLinks:
 
 
 class TestItProvesTheCopy:
+    def test_corruption_after_stage_fsync_is_refused(
+        self, store: BlobStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        blob = _staged(store, b"GOOD")
+        destination = tmp_path / "out" / "file.txt"
+        original_open = Path.open
+        original_fdopen = os.fdopen
+        original_fsync = os.fsync
+        staged_handle: BinaryIO | None = None
+
+        def capture_stage(path: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+            nonlocal staged_handle
+            handle = original_open(path, mode, *args, **kwargs)
+            if mode in {"xb", "wb"}:
+                staged_handle = cast("BinaryIO", handle)
+            return handle
+
+        def capture_fdopen(fd: int, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+            nonlocal staged_handle
+            handle = original_fdopen(fd, mode, *args, **kwargs)
+            if mode == "wb":
+                staged_handle = cast("BinaryIO", handle)
+            return handle
+
+        def corrupt_after_fsync(fd: int) -> None:
+            original_fsync(fd)
+            assert staged_handle is not None
+            staged_handle.seek(0)
+            staged_handle.truncate()
+            staged_handle.write(b"EVIL")
+            staged_handle.flush()
+
+        monkeypatch.setattr(Path, "open", capture_stage)
+        monkeypatch.setattr(os, "fdopen", capture_fdopen)
+        monkeypatch.setattr(os, "fsync", corrupt_after_fsync)
+
+        with pytest.raises(PublicationError, match="does not match its blob"):
+            store.publish(blob, destination)
+
+        assert not destination.exists()
+
     def test_a_blob_whose_bytes_do_not_match_its_digest_is_refused(
         self, store: BlobStore, tmp_path: Path
     ) -> None:
