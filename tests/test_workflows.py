@@ -40,7 +40,7 @@ def test_quality_workflow_has_cross_platform_version_and_artifact_gates() -> Non
 
 
 def test_the_exfat_evidence_job_treats_a_skip_as_a_failure() -> None:
-    """The fallback's premise is proven by a real exFAT volume or not at all.
+    """The no-replace refusal is proven by a real exFAT volume or not at all.
 
     `hdiutil` can fail transiently, and the fixture then skips all three tests.
     pytest exits 0 on a skip, so without this the run stayed green with the
@@ -53,7 +53,7 @@ def test_the_exfat_evidence_job_treats_a_skip_as_a_failure() -> None:
 
     assert job["runs-on"] == "macos-latest"
     body = "\n".join(str(step.get("run", "")) for step in job["steps"])
-    assert "TestTheFallbackOnARealFilesystemThatCannotHardLink" in body
+    assert "TestNoHardLinksOnRealFilesystem" in body
     assert "skipped" in body
     assert "exit 1" in body
 

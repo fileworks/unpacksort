@@ -132,10 +132,11 @@ class BlobStore:
 
         `C-13`. The engine checks the destination before calling this, and that
         check is a different thing from this one: it can only speak for the
-        moment it ran. `os.replace` is atomic but not *conditional*, so anything
-        that appeared in the window between the check and the write was
-        destroyed without a word — and this is the one method in the program
-        that writes into a directory the user owns.
+        moment it ran. The final name is created with a same-directory hard link,
+        which is conditional: anything that appeared in the window between the
+        check and the write makes the link fail without destroying it. A
+        filesystem without that primitive is refused rather than weakened to a
+        check-then-replace operation.
 
         The copy is also re-hashed before it is published, for the same reason
         `ingest_stream` hashes what it writes: bytes that have travelled through
@@ -209,24 +210,21 @@ def _hash_closed_stage(path: Path) -> tuple[str, int]:
 
 
 def _commit_without_clobbering(temporary: Path, destination: Path) -> None:
-    """Move *temporary* onto *destination*, refusing if something is there.
+    """Create *destination* as a second name for *temporary*, or fail closed.
 
-    `os.link` is the race-free form: it creates the name or fails, with no
-    window in between. Filesystems that cannot hard-link (exFAT, some network
-    mounts) fall back to a check and a replace, which narrows the window without
-    closing it — stated plainly rather than papered over, because the fallback
-    is the weaker guarantee and a reader deserves to know which one they got.
+    `os.link` is the only publication primitive used here: it creates the name
+    or fails, with no window in between. Filesystems that cannot hard-link
+    (exFAT, some network mounts) are refused because a check followed by
+    replacement could destroy another writer's file.
     """
     occupied = f"refusing to overwrite an existing file: {destination}"
     try:
         os.link(temporary, destination)
     except FileExistsError:
         raise PublicationError(occupied) from None
-    except OSError:
-        if destination.exists():
-            raise PublicationError(occupied) from None
-        temporary.replace(destination)
-        return
+    except OSError as exc:
+        unavailable = f"atomic no-replace publication is unavailable on this filesystem: {exc}"
+        raise PublicationError(unavailable) from exc
     temporary.unlink()
 
 
