@@ -17,8 +17,10 @@ def run(*, premise_mutant: bool = False) -> subprocess.CompletedProcess[str]:
         command = [
             sys.executable,
             "-c",
-            "import os, sys, pytest; os.link = lambda *args, **kwargs: None; "
-            "raise SystemExit(pytest.main(sys.argv[1:]))",
+            (
+                "import os, sys, pytest; os.link = lambda *args, **kwargs: None; "
+                "raise SystemExit(pytest.main(sys.argv[1:]))"
+            ),
         ]
     return subprocess.run(
         [
