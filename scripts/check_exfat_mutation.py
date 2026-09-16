@@ -9,17 +9,25 @@ from pathlib import Path
 EXPECTED_FAILURES = 2
 
 
-def run() -> subprocess.CompletedProcess[str]:
+def run(*, premise_mutant: bool = False) -> subprocess.CompletedProcess[str]:
+    selector = "tests/test_publish_safety.py::TestNoHardLinksOnRealFilesystem"
+    command = [sys.executable, "-m", "pytest"]
+    if premise_mutant:
+        selector += "::test_hard_links_really_are_unsupported_there"
+        command = [
+            sys.executable,
+            "-c",
+            "import os, sys, pytest; os.link = lambda *args, **kwargs: None; "
+            "raise SystemExit(pytest.main(sys.argv[1:]))",
+        ]
     return subprocess.run(
         [
-            sys.executable,
-            "-m",
-            "pytest",
+            *command,
             "-q",
             "-rs",
             "--no-cov",
             "--tb=short",
-            "tests/test_publish_safety.py::TestNoHardLinksOnRealFilesystem",
+            selector,
         ],
         capture_output=True,
         text=True,
@@ -52,9 +60,19 @@ def main() -> int:
             and mutant.stdout.count("DID NOT RAISE") == EXPECTED_FAILURES
             and "skipped" not in mutant.stdout
         )
-        return 0 if detected else 1
     finally:
         path.write_bytes(original)
+    # The third case guards a kernel capability premise, not our publication
+    # function. It must reject a link primitive that succeeds unexpectedly.
+    premise = run(premise_mutant=True)
+    sys.stdout.write(premise.stdout + premise.stderr)
+    premise_detected = (
+        premise.returncode == 1
+        and "1 failed" in premise.stdout
+        and "DID NOT RAISE" in premise.stdout
+        and "skipped" not in premise.stdout
+    )
+    return 0 if detected and premise_detected else 1
 
 
 if __name__ == "__main__":
