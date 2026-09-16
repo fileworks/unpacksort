@@ -8,6 +8,7 @@ from pathlib import Path
 
 EXPECTED_FAILURES = 2
 
+
 def run() -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
@@ -42,7 +43,7 @@ def main() -> int:
     if original.count(old) != 1:
         return 1
     try:
-        path.write_bytes(original.replace(old, b"os.replace(temporary, destination)"))
+        path.write_bytes(original.replace(old, b"os.replace(temporary, destination); return"))
         mutant = run()
         sys.stdout.write(mutant.stdout + mutant.stderr)
         detected = (
