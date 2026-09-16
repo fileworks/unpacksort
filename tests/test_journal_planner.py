@@ -20,9 +20,31 @@ from unpacksort.models import (
     SourceIdentity,
     Status,
 )
-from unpacksort.planner import _PlannerState, freeze_plan, iter_freeze_plan
+from unpacksort.planner import _PlannerState, _portable_directories, freeze_plan, iter_freeze_plan
 from unpacksort.policy import Policy
 from unpacksort.storage import BlobStore
+
+
+def test_directory_collisions_use_linear_candidate_lookups(monkeypatch: pytest.MonkeyPatch) -> None:
+    probes = 0
+    real_lookup = _PlannerState.directory_is_occupied
+
+    def counted(self: _PlannerState, parent: str, key: str) -> bool:
+        nonlocal probes
+        probes += 1
+        return real_lookup(self, parent, key)
+
+    monkeypatch.setattr(_PlannerState, "directory_is_occupied", counted)
+    names = ["".join("A" if bit == "1" else "a" for bit in f"{index:09b}") for index in range(512)]
+    with _PlannerState() as state:
+        # An existing literal suffix must not be overwritten by the cursor.
+        reserved = _portable_directories(["aaaaaaaaa (1)"], state)
+        assigned = [_portable_directories([name], state) for name in names]
+        assert [_portable_directories([name], state) for name in names] == assigned
+        assert (
+            len({tuple(part.casefold() for part in path) for path in [reserved, *assigned]}) == 513
+        )
+        assert probes <= 514
 
 
 def _occurrence(
