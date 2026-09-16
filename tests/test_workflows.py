@@ -107,3 +107,18 @@ def test_actions_use_versioned_references_and_least_privilege() -> None:
         assert "@master" not in text
         workflow = yaml.safe_load(text)
         assert workflow["permissions"]["contents"] == "read"
+
+
+def test_release_build_inputs_are_pinned_and_constrained() -> None:
+    pyproject = Path("pyproject.toml").read_text()
+    assert 'requires = ["hatchling==1.31.0"]' in pyproject
+    assert "python -m pip install uv==0.11.18" in pyproject
+    assert "uv build --build-constraints build-constraints.txt" in pyproject
+    assert Path("build-requirements.in").read_text() == "hatchling==1.31.0\n"
+    assert Path("build-constraints.txt").read_text().splitlines() == [
+        "hatchling==1.31.0",
+        "packaging==26.3",
+        "pathspec==1.1.1",
+        "pluggy==1.6.0",
+        "trove-classifiers==2026.6.1.19",
+    ]

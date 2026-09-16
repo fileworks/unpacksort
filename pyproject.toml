@@ -114,7 +114,7 @@ build_command = """
 python -m pip install uv==0.11.18
 uv lock --upgrade-package "$PACKAGE_NAME"
 git add uv.lock
-uv build
+uv build --build-constraints build-constraints.txt
 """
 commit_author = "Niklas Büchel <niklas.buechel@accso.de>"
 commit_message = "chore(release): {version}\n\n- publish immutable release metadata"

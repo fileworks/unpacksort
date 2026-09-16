@@ -95,6 +95,8 @@ jobs:
             echo "::error::exFAT no-replace refusal evidence skipped on the runner that must produce it"
             exit 1
           fi
+      - name: Prove the real-filesystem guards reject unsafe replacement
+        run: uv run python scripts/check_exfat_mutation.py
 
   dependency-audit:
     name: dependency audit

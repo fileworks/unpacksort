@@ -106,6 +106,12 @@ class _PlannerState:
                 next_suffix INTEGER NOT NULL,
                 PRIMARY KEY (directory_key, basename_key)
             );
+            CREATE TABLE directory_allocation_cursors (
+                directory_key TEXT NOT NULL,
+                basename_key TEXT NOT NULL,
+                next_suffix INTEGER NOT NULL,
+                PRIMARY KEY (directory_key, basename_key)
+            );
             CREATE TABLE directory_assignments (
                 parent_key TEXT NOT NULL,
                 assignment_key TEXT NOT NULL,
@@ -176,6 +182,27 @@ class _PlannerState:
     ) -> None:
         self._connection.execute(
             "INSERT INTO file_allocation_cursors(directory_key, basename_key, next_suffix) "
+            "VALUES (?, ?, ?) ON CONFLICT(directory_key, basename_key) DO UPDATE SET "
+            "next_suffix = excluded.next_suffix",
+            (directory_key, basename_key, next_suffix),
+        )
+
+    def directory_allocation_cursor(self, directory_key: str, basename_key: str) -> int:
+        row = self._connection.execute(
+            "SELECT next_suffix FROM directory_allocation_cursors "
+            "WHERE directory_key = ? AND basename_key = ?",
+            (directory_key, basename_key),
+        ).fetchone()
+        return 0 if row is None else int(row[0])
+
+    def set_directory_allocation_cursor(
+        self,
+        directory_key: str,
+        basename_key: str,
+        next_suffix: int,
+    ) -> None:
+        self._connection.execute(
+            "INSERT INTO directory_allocation_cursors(directory_key, basename_key, next_suffix) "
             "VALUES (?, ?, ?) ON CONFLICT(directory_key, basename_key) DO UPDATE SET "
             "next_suffix = excluded.next_suffix",
             (directory_key, basename_key, next_suffix),
@@ -283,11 +310,12 @@ def _portable_directories(
         assignment_key = f"{collision_key(safe)}\0{identity}"
         assigned = state.directory_assignment(parent_key, assignment_key)
         if assigned is None:
-            assigned = safe
-            suffix = 0
+            suffix = state.directory_allocation_cursor(parent_key, collision_key(safe))
+            assigned = safe if suffix == 0 else suffixed_name(safe, suffix)
             while state.directory_is_occupied(parent_key, collision_key(assigned)):
                 suffix += 1
                 assigned = suffixed_name(safe, suffix)
             state.assign_directory(parent_key, assignment_key, assigned)
+            state.set_directory_allocation_cursor(parent_key, collision_key(safe), suffix + 1)
         resolved.append(assigned)
     return resolved
