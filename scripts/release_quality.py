@@ -16,7 +16,7 @@ def require_quality(pages: list[dict[str, Any]], sha: str, repository: str) -> i
         for run in page["workflow_runs"]
         if run.get("head_sha") == sha
         and run.get("head_branch") == "main"
-        and run.get("event") in {"push", "workflow_dispatch"}
+        and run.get("event") in {"push", "workflow_dispatch", "schedule"}
         and run.get("head_repository", {}).get("full_name") == repository
     ]
     if not candidates:

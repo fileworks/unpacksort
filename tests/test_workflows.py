@@ -83,6 +83,66 @@ def test_exact_quality_decisions(
             runpy.run_path("scripts/release_quality.py", run_name="__main__")
 
 
+@pytest.mark.parametrize(
+    ("status", "conclusion", "allowed"),
+    [
+        ("completed", "success", True),
+        ("completed", "failure", False),
+        ("completed", "cancelled", False),
+        ("queued", None, False),
+        ("in_progress", None, False),
+    ],
+)
+def test_latest_scheduled_quality_supersedes_push_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    status: str,
+    conclusion: str | None,
+    allowed: bool,
+) -> None:
+    common = {
+        "head_sha": "current",
+        "head_branch": "main",
+        "head_repository": {"full_name": "fileworks/unpacksort"},
+    }
+    payload = tmp_path / "runs.json"
+    payload.write_text(
+        json.dumps(
+            [
+                {
+                    "workflow_runs": [
+                        {
+                            **common,
+                            "id": 42,
+                            "event": "push",
+                            "status": "completed",
+                            "conclusion": "failure" if allowed else "success",
+                        },
+                        {
+                            **common,
+                            "id": 43,
+                            "event": "schedule",
+                            "status": status,
+                            "conclusion": conclusion,
+                        },
+                    ]
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["release_quality.py", str(payload), "current", "fileworks/unpacksort"]
+    )
+    if allowed:
+        runpy.run_path("scripts/release_quality.py", run_name="__main__")
+        assert "Exact source SHA passed Quality run 43" in capsys.readouterr().out
+    else:
+        with pytest.raises(SystemExit, match="Quality gate refused release"):
+            runpy.run_path("scripts/release_quality.py", run_name="__main__")
+
+
 def _workflow(name: str) -> dict[str, object]:
     payload = yaml.safe_load((Path(".github/workflows") / name).read_text(encoding="utf-8"))
     assert isinstance(payload, dict)
