@@ -1,7 +1,9 @@
 name: Release
 
 on:
-  push:
+  workflow_run:
+    workflows: [Quality]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
     inputs:
@@ -25,8 +27,50 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  quality-gate:
+    name: exact source Quality gate
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Resolve and verify the exact source
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RECOVER_TAG: ${{ inputs.recover_tag }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          if [[ -n "$RECOVER_TAG" ]]; then
+            [[ "$RECOVER_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+            source_sha="$(git rev-parse "$RECOVER_TAG^{}")"
+            git merge-base --is-ancestor "$source_sha" origin/main
+          elif [[ -n "$TESTED_SHA" && "$TESTED_SHA" != "$source_sha" ]]; then
+            echo "::error::Quality tested a stale main SHA"
+            exit 1
+          fi
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/quality.yml/runs?head_sha=$source_sha&per_page=100" \
+            > quality-runs.json
+          python scripts/release_quality.py quality-runs.json "$source_sha" "$GITHUB_REPOSITORY"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+
   release-integrity:
     name: release-integrity
+    needs: quality-gate
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -38,7 +82,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.recover_tag || github.ref_name }}
+          ref: ${{ needs.quality-gate.outputs.source_sha }}
           fetch-depth: 0
           token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
       - uses: actions/setup-python@v7
@@ -55,6 +99,17 @@ jobs:
           uv run ruff check .
           uv run mypy
           uv run pytest
+      - name: Recheck current main
+        if: inputs.recover_tag == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.quality-gate.outputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          [[ "$current" == "$SOURCE_SHA" ]] || { echo "::error::main advanced after Quality"; exit 1; }
+          git checkout -B main "$SOURCE_SHA"
       - name: Determine, commit, and tag the semantic version
         id: release
         if: inputs.recover_tag == ''
@@ -114,7 +169,7 @@ jobs:
             exit 1
           fi
 
-          uv build
+          uv build --build-constraints build-constraints.txt
           echo "released=true" >> "$GITHUB_OUTPUT"
           echo "tag=$RECOVER_TAG" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"

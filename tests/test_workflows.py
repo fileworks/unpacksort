@@ -1,14 +1,93 @@
 from __future__ import annotations
 
+import json
 import re
+import runpy
+import sys
 from pathlib import Path
 
+import pytest
 import yaml
+
+
+def test_release_requires_successful_quality_for_every_entry_point() -> None:
+    workflow = _workflow("release.yml")
+    triggers = workflow.get("on")
+    assert isinstance(triggers, dict)
+    assert "push" not in triggers
+    assert triggers["workflow_run"] == {
+        "workflows": ["Quality"],
+        "types": ["completed"],
+        "branches": ["main"],
+    }
+    jobs = workflow["jobs"]
+    assert isinstance(jobs, dict)
+    gate = jobs["quality-gate"]
+    assert "github.event.workflow_run.conclusion == 'success'" in gate["if"]
+    assert jobs["release-integrity"]["needs"] == "quality-gate"
+    text = (Path(".github/workflows") / "release.yml").read_text(encoding="utf-8")
+    assert "scripts/release_quality.py" in text
+    assert "ref: ${{ needs.quality-gate.outputs.source_sha }}" in text
+    assert text.index("Recheck current main") < text.index("Determine, commit, and tag")
+
+
+@pytest.mark.parametrize(
+    ("status", "conclusion", "sha", "allowed"),
+    [
+        ("completed", "success", "current", True),
+        ("completed", "failure", "current", False),
+        ("completed", "cancelled", "current", False),
+        ("queued", None, "current", False),
+        ("in_progress", None, "current", False),
+        ("completed", "success", "stale", False),
+    ],
+)
+def test_exact_quality_decisions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    status: str,
+    conclusion: str | None,
+    sha: str,
+    allowed: bool,
+) -> None:
+    payload = tmp_path / "runs.json"
+    payload.write_text(
+        json.dumps(
+            [
+                {
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "head_sha": sha,
+                            "head_branch": "main",
+                            "event": "push",
+                            "head_repository": {"full_name": "fileworks/unpacksort"},
+                            "status": status,
+                            "conclusion": conclusion,
+                        }
+                    ]
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["release_quality.py", str(payload), "current", "fileworks/unpacksort"]
+    )
+    if allowed:
+        runpy.run_path("scripts/release_quality.py", run_name="__main__")
+        assert "Exact source SHA passed Quality run 42" in capsys.readouterr().out
+    else:
+        with pytest.raises(SystemExit, match="Quality gate refused release"):
+            runpy.run_path("scripts/release_quality.py", run_name="__main__")
 
 
 def _workflow(name: str) -> dict[str, object]:
     payload = yaml.safe_load((Path(".github/workflows") / name).read_text(encoding="utf-8"))
     assert isinstance(payload, dict)
+    if True in payload:  # PyYAML's YAML 1.1 resolver reads the Actions key as boolean.
+        payload["on"] = payload.pop(True)
     return payload
 
 
@@ -110,6 +189,23 @@ def test_actions_use_versioned_references_and_least_privilege() -> None:
 
 
 def test_release_build_inputs_are_pinned_and_constrained() -> None:
+    for name in ("quality.yml", "release.yml"):
+        workflow = _workflow(name)
+        jobs = workflow["jobs"]
+        assert isinstance(jobs, dict)
+        commands = [
+            str(step.get("run", "")) for job in jobs.values() for step in job.get("steps", [])
+        ]
+        builds = [
+            line
+            for command in commands
+            for line in command.splitlines()
+            if re.search(r"\buv build\b", line)
+        ]
+        assert builds, f"{name}: no build entry points checked"
+        assert all(
+            "uv build --build-constraints build-constraints.txt" in line for line in builds
+        ), builds
     pyproject = Path("pyproject.toml").read_text()
     assert 'requires = ["hatchling==1.31.0"]' in pyproject
     assert "python -m pip install uv==0.11.18" in pyproject
