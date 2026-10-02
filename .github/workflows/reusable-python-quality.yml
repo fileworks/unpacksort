@@ -1,0 +1,141 @@
+# Reusable Python quality gates for the fileworks CLIs.
+#
+# Only the *stable* half lives here: checking out, setting up uv, syncing the
+# locked environment, and running the four checks every Python CLI in the family
+# runs identically. Publishing, signing, platform packaging, and each product's
+# own matrix stay in the consumer — a shared workflow that could publish would
+# put release permissions behind a revision nobody reviews per repository.
+#
+# Consumers pin this by commit SHA, never by branch. A moving reference here is
+# a moving reference into every repository at once.
+
+name: python-quality
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: The interpreter to run the gates on.
+        required: false
+        type: string
+        default: "3.12"
+      runs-on:
+        description: GitHub-hosted runner label used for this matrix entry.
+        required: false
+        type: string
+        default: ubuntu-latest
+      working-directory:
+        description: Repository-relative directory containing pyproject.toml and uv.lock.
+        required: false
+        type: string
+        default: "."
+      sync-mode:
+        description: Locked dependency shape; all-extras-dev or all-groups.
+        required: false
+        type: string
+        default: all-extras-dev
+      install-poppler:
+        description: Install poppler-utils on the Linux runner before syncing.
+        required: false
+        type: boolean
+        default: false
+      audit:
+        description: Run the dependency audit gate.
+        required: false
+        type: boolean
+        default: true
+      typecheck-target:
+        description: File or package path passed to mypy.
+        required: false
+        type: string
+        default: "."
+    outputs:
+      revision:
+        description: The revision of this reusable workflow, for traceability.
+        value: ${{ jobs.gates.outputs.revision }}
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    runs-on: ${{ inputs.runs-on }}
+    outputs:
+      revision: ${{ steps.revision.outputs.sha }}
+    steps:
+      # actions/checkout v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - id: revision
+        run: echo "sha=${{ github.workflow_sha }}" >> "$GITHUB_OUTPUT"
+
+      # astral-sh/setup-uv v9.0.0
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Validate sync mode
+        shell: bash
+        env:
+          SYNC_MODE: ${{ inputs.sync-mode }}
+        run: |
+          case "$SYNC_MODE" in
+            all-extras-dev|all-groups) ;;
+            *)
+              echo "::error::sync-mode must be all-extras-dev or all-groups"
+              exit 2
+              ;;
+          esac
+
+      - name: Install Poppler on the test runner
+        if: inputs.install-poppler
+        # awalsh128/cache-apt-pkgs-action v1.6.3
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9
+        with:
+          packages: poppler-utils
+          version: "1.0"
+
+      - name: Install the locked all-extras development environment
+        if: inputs.sync-mode == 'all-extras-dev'
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          PYTHON_VERSION: ${{ inputs.python-version }}
+        run: uv sync --locked --all-extras --dev --python "$PYTHON_VERSION"
+
+      - name: Install the locked all-groups environment
+        if: inputs.sync-mode == 'all-groups'
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          PYTHON_VERSION: ${{ inputs.python-version }}
+        run: uv sync --locked --all-groups --python "$PYTHON_VERSION"
+
+      - name: format
+        working-directory: ${{ inputs.working-directory }}
+        run: uv run ruff format --check .
+
+      - name: lint
+        working-directory: ${{ inputs.working-directory }}
+        run: uv run ruff check .
+
+      - name: typecheck
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          MYPY_TARGET: ${{ inputs.typecheck-target }}
+        run: uv run mypy --strict "$MYPY_TARGET"
+
+      - name: test
+        working-directory: ${{ inputs.working-directory }}
+        run: uv run pytest -q
+
+      - name: dependency-audit
+        if: inputs.audit
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          uv export --locked --all-extras --no-dev --no-emit-project \
+            --format requirements-txt \
+            --output-file dependency-audit-requirements.txt
+          uvx --from pip-audit==2.9.0 pip-audit --version
+          uvx --from pip-audit==2.9.0 pip-audit \
+            --requirement dependency-audit-requirements.txt --strict

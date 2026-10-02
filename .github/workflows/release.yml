@@ -1,0 +1,57 @@
+name: Release
+
+# Private distributions are uploaded deliberately to fileworks/private-releases.
+# This workflow verifies a candidate and never publishes to PyPI or a catalog.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    uses: ./.github/workflows/reusable-python-quality.yml
+    with:
+      python-version: "3.12"
+      sync-mode: all-groups
+      audit: false
+
+  release-integrity:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          python-version: "3.12"
+      - name: Build constrained source and wheel
+        run: uv build --build-constraints build-constraints.txt
+      - name: Check source and artifact identities
+        shell: python
+        run: |
+          import email, pathlib, tarfile, tomllib, zipfile
+          project = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]
+          expected = project["version"]
+          wheels = list(pathlib.Path("dist").glob("*.whl"))
+          sdists = list(pathlib.Path("dist").glob("*.tar.gz"))
+          assert len(wheels) == len(sdists) == 1, "expected one wheel and sdist"
+          with zipfile.ZipFile(wheels[0]) as wheel:
+              names = [n for n in wheel.namelist() if n.endswith(".dist-info/METADATA")]
+              assert len(names) == 1
+              metadata = email.message_from_bytes(wheel.read(names[0]))
+              assert metadata["Version"] == expected
+              assert metadata["Name"].replace("_", "-") == project["name"]
+          with tarfile.open(sdists[0]) as sdist:
+              names = [n for n in sdist.getnames() if n.count("/") == 1 and n.endswith("/PKG-INFO")]
+              assert len(names) == 1
+              metadata = email.message_from_bytes(sdist.extractfile(names[0]).read())
+              assert metadata["Version"] == expected
+      - name: Smoke the installed wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv venv .release-smoke
+          uv pip install --python .release-smoke dist/*.whl
+          command_path=".release-smoke/bin/unpacksort"
+          "$command_path" --version
+          "$command_path" --help > /dev/null

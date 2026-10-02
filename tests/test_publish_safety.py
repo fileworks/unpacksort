@@ -1,0 +1,364 @@
+"""C-13 — publishing must not clobber, and must prove what it wrote.
+
+`publish` is the one method in the program that writes into a directory the
+user owns. It used to `os.replace` onto the destination, which is atomic but not
+conditional: anything already there was destroyed, and anything that appeared
+between the engine's check and this write was destroyed silently. It also
+trusted the copy, while `ingest_stream` one method above hashes everything it
+writes.
+"""
+
+from __future__ import annotations
+
+import errno
+import hashlib
+import os
+import platform
+import shutil
+import subprocess
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any, BinaryIO, cast
+
+import pytest
+
+from unpacksort.journal import Journal
+from unpacksort.models import Blob
+from unpacksort.storage import BlobStore, PublicationError, _commit_without_clobbering
+
+
+@pytest.fixture
+def store(tmp_path: Path) -> Iterator[BlobStore]:
+    journal = Journal(tmp_path / "destination")
+    try:
+        yield BlobStore(journal)
+    finally:
+        journal.close()
+
+
+def _staged(store: BlobStore, payload: bytes) -> Blob:
+    return store.ingest_bytes(payload, max_bytes=1_000_000)
+
+
+class TestItRefusesToOverwrite:
+    def test_an_existing_destination_is_left_exactly_as_it_was(
+        self, store: BlobStore, tmp_path: Path
+    ) -> None:
+        blob = _staged(store, b"the new bytes")
+        destination = tmp_path / "out" / "file.txt"
+        destination.parent.mkdir(parents=True)
+        destination.write_bytes(b"somebody else's work")
+
+        with pytest.raises(PublicationError, match="refusing to overwrite"):
+            store.publish(blob, destination)
+
+        assert destination.read_bytes() == b"somebody else's work"
+
+    def test_a_pre_existing_temporary_name_is_left_untouched(
+        self, store: BlobStore, tmp_path: Path
+    ) -> None:
+        blob = _staged(store, b"the new bytes")
+        destination = tmp_path / "out" / "file.txt"
+        destination.parent.mkdir(parents=True)
+        temporary = destination.with_name(f".{destination.name}.unpacksort.tmp")
+        temporary.write_bytes(b"unrelated staging data")
+
+        store.publish(blob, destination)
+
+        assert temporary.read_bytes() == b"unrelated staging data"
+        assert destination.read_bytes() == b"the new bytes"
+
+    def test_it_leaves_no_temporary_behind_when_it_refuses(
+        self, store: BlobStore, tmp_path: Path
+    ) -> None:
+        blob = _staged(store, b"the new bytes")
+        destination = tmp_path / "out" / "file.txt"
+        destination.parent.mkdir(parents=True)
+        destination.write_bytes(b"somebody else's work")
+
+        with pytest.raises(PublicationError):
+            store.publish(blob, destination)
+
+        assert sorted(path.name for path in destination.parent.iterdir()) == ["file.txt"]
+
+    def test_an_empty_existing_file_still_counts_as_something(
+        self, store: BlobStore, tmp_path: Path
+    ) -> None:
+        """Zero bytes is a file somebody made, not an absence."""
+        blob = _staged(store, b"payload")
+        destination = tmp_path / "out" / "file.txt"
+        destination.parent.mkdir(parents=True)
+        destination.touch()
+
+        with pytest.raises(PublicationError, match="refusing to overwrite"):
+            store.publish(blob, destination)
+
+
+class TestNoHardLinkFilesystemsFailClosed:
+    """A filesystem without conditional publication support must be refused."""
+
+    @staticmethod
+    def _no_hard_links(monkeypatch: pytest.MonkeyPatch) -> None:
+        def refuse(*_unused: object) -> None:
+            raise OSError(errno.EPERM, "hard links are not supported here")
+
+        monkeypatch.setattr("unpacksort.storage.os.link", refuse)
+
+    def test_it_still_refuses_an_existing_destination(
+        self, store: BlobStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._no_hard_links(monkeypatch)
+        blob = _staged(store, b"the new bytes")
+        destination = tmp_path / "out" / "file.txt"
+        destination.parent.mkdir(parents=True)
+        destination.write_bytes(b"somebody else's work")
+
+        with pytest.raises(PublicationError, match="atomic no-replace publication"):
+            store.publish(blob, destination)
+
+        assert destination.read_bytes() == b"somebody else's work"
+
+    def test_it_refuses_to_publish_when_the_destination_is_free(
+        self, store: BlobStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._no_hard_links(monkeypatch)
+        blob = _staged(store, b"payload")
+        destination = tmp_path / "out" / "file.txt"
+
+        with pytest.raises(PublicationError, match="atomic no-replace publication"):
+            store.publish(blob, destination)
+
+        assert not destination.exists()
+        assert blob.path.read_bytes() == b"payload"
+
+
+class TestItProvesTheCopy:
+    def test_corruption_after_stage_fsync_is_refused(
+        self, store: BlobStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        blob = _staged(store, b"GOOD")
+        destination = tmp_path / "out" / "file.txt"
+        original_open = Path.open
+        original_fdopen = os.fdopen
+        original_fsync = os.fsync
+        staged_handle: BinaryIO | None = None
+
+        def capture_stage(path: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+            nonlocal staged_handle
+            handle = original_open(path, mode, *args, **kwargs)
+            if mode in {"xb", "wb"}:
+                staged_handle = cast("BinaryIO", handle)
+            return handle
+
+        def capture_fdopen(fd: int, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+            nonlocal staged_handle
+            handle = original_fdopen(fd, mode, *args, **kwargs)
+            if mode == "wb":
+                staged_handle = cast("BinaryIO", handle)
+            return handle
+
+        def corrupt_after_fsync(fd: int) -> None:
+            original_fsync(fd)
+            assert staged_handle is not None
+            staged_handle.seek(0)
+            staged_handle.truncate()
+            staged_handle.write(b"EVIL")
+            staged_handle.flush()
+
+        monkeypatch.setattr(Path, "open", capture_stage)
+        monkeypatch.setattr(os, "fdopen", capture_fdopen)
+        monkeypatch.setattr(os, "fsync", corrupt_after_fsync)
+
+        with pytest.raises(PublicationError, match="does not match its blob"):
+            store.publish(blob, destination)
+
+        assert not destination.exists()
+
+    def test_a_blob_whose_bytes_do_not_match_its_digest_is_refused(
+        self, store: BlobStore, tmp_path: Path
+    ) -> None:
+        """Corruption between staging and publishing, which is exactly the
+        window `ingest_stream`'s own hashing cannot see."""
+        blob = _staged(store, b"payload")
+        blob.path.write_bytes(b"corrupted after staging")
+        destination = tmp_path / "out" / "file.txt"
+
+        with pytest.raises(PublicationError, match="does not match its blob"):
+            store.publish(blob, destination)
+
+        assert not destination.exists()
+
+    def test_nothing_is_left_at_the_destination_after_a_bad_copy(
+        self, store: BlobStore, tmp_path: Path
+    ) -> None:
+        blob = _staged(store, b"payload")
+        blob.path.write_bytes(b"corrupted after staging")
+        destination = tmp_path / "out" / "file.txt"
+
+        with pytest.raises(PublicationError):
+            store.publish(blob, destination)
+
+        assert list(destination.parent.iterdir()) == []
+
+
+class TestTheHappyPathIsUnchanged:
+    def test_it_publishes_the_bytes_it_staged(self, store: BlobStore, tmp_path: Path) -> None:
+        payload = b"a file worth keeping" * 100
+        blob = _staged(store, payload)
+        destination = tmp_path / "out" / "file.txt"
+
+        store.publish(blob, destination)
+
+        assert destination.read_bytes() == payload
+        assert hashlib.sha256(destination.read_bytes()).hexdigest() == blob.digest
+
+    def test_it_creates_the_parent_directory(self, store: BlobStore, tmp_path: Path) -> None:
+        blob = _staged(store, b"payload")
+        destination = tmp_path / "deep" / "nested" / "file.txt"
+
+        store.publish(blob, destination)
+
+        assert destination.is_file()
+
+    def test_it_leaves_no_temporary_behind_on_success(
+        self, store: BlobStore, tmp_path: Path
+    ) -> None:
+        blob = _staged(store, b"payload")
+        destination = tmp_path / "out" / "file.txt"
+
+        store.publish(blob, destination)
+
+        assert sorted(path.name for path in destination.parent.iterdir()) == ["file.txt"]
+
+    def test_an_empty_payload_publishes(self, store: BlobStore, tmp_path: Path) -> None:
+        """The read loop must not mistake "no bytes" for "nothing to do"."""
+        blob = _staged(store, b"")
+        destination = tmp_path / "out" / "empty.txt"
+
+        store.publish(blob, destination)
+
+        assert destination.is_file()
+        assert destination.read_bytes() == b""
+
+
+#: Resolved to an absolute path so the subprocess calls below name an
+#: executable rather than trusting `PATH` at call time.
+_HDIUTIL = shutil.which("hdiutil")
+
+
+def _exfat_mount(tmp_path: Path) -> tuple[Path | None, str]:
+    """Mount a small exFAT image, or say precisely why that was not possible.
+
+    Skipping on other platforms is deliberate: the point of this class is to run
+    against a filesystem that genuinely cannot hard-link, and a simulated one is
+    already covered above. macOS can build one with `hdiutil` and no privileges.
+
+    The reason is returned rather than collapsed into `None` because the two
+    causes are not the same event. "This platform has no exFAT" is the designed
+    outcome; "hdiutil failed on a host that should have managed it" is a lost
+    piece of the no-replace evidence, and reporting both as one message made a
+    transient failure on the macOS runner indistinguishable from a Linux skip.
+    """
+    # `platform.system()` rather than `sys.platform`: mypy narrows the latter to
+    # the checking platform, so on Linux it proves this function's body
+    # unreachable and fails the type gate. The runtime behaviour is identical.
+    if platform.system() != "Darwin":
+        return None, "exFAT evidence is collected on macOS, which can build one unprivileged"
+    if _HDIUTIL is None:
+        return None, "hdiutil is not on PATH on this macOS host"
+    image = tmp_path / "exfat.dmg"
+    mountpoint = tmp_path / "exfat"
+    mountpoint.mkdir()
+    create = subprocess.run(  # noqa: S603
+        [
+            _HDIUTIL,
+            "create",
+            "-size",
+            "20m",
+            "-fs",
+            "exFAT",
+            "-volname",
+            "UPSTEST",
+            "-o",
+            str(image),
+            "-quiet",
+        ],
+        capture_output=True,
+        check=False,
+    )
+    if create.returncode != 0:
+        return None, f"hdiutil create failed: {_stderr(create)}"
+    attach = subprocess.run(  # noqa: S603
+        [_HDIUTIL, "attach", str(image), "-mountpoint", str(mountpoint), "-nobrowse"],
+        capture_output=True,
+        check=False,
+    )
+    if attach.returncode != 0:
+        return None, f"hdiutil attach failed: {_stderr(attach)}"
+    return mountpoint, ""
+
+
+def _stderr(completed: subprocess.CompletedProcess[bytes]) -> str:
+    return completed.stderr.decode("utf-8", "replace").strip() or "no diagnostic output"
+
+
+@pytest.fixture(scope="module")
+def exfat(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+    """Mounted once for the module: attaching an image per test is slow enough to
+    make the suite flaky under contention, and these tests do not share state."""
+    mountpoint, reason = _exfat_mount(tmp_path_factory.mktemp("exfat-image"))
+    if mountpoint is None:
+        pytest.skip(reason)
+    try:
+        yield mountpoint
+    finally:
+        assert _HDIUTIL is not None  # the mount above could not have succeeded otherwise
+        subprocess.run(  # noqa: S603
+            [_HDIUTIL, "detach", str(mountpoint), "-force"],
+            capture_output=True,
+            check=False,
+        )
+
+
+class TestNoHardLinksOnRealFilesystem:
+    """The same fail-closed path, against exFAT itself rather than a patched `os.link`.
+
+    The class above proves the refusal *given* that hard links fail. It cannot
+    prove the premise: that exFAT is a filesystem where
+    they actually do, and that they fail in the way the `except OSError` clause
+    catches. A monkeypatch raising `EPERM` would pass either way — including if
+    the real error arrived as something the handler never sees.
+    """
+
+    def test_hard_links_really_are_unsupported_there(self, exfat: Path) -> None:
+        source = exfat / "unsupported-source.bin"
+        source.write_bytes(b"payload")
+
+        with pytest.raises(OSError) as raised:  # noqa: PT011 - the errno is the assertion
+            os.link(source, exfat / "unsupported-link.bin")
+
+        # ENOTSUP (45 on Darwin), not EPERM — which is why the handler catches
+        # OSError broadly rather than one errno it guessed.
+        assert raised.value.errno == errno.ENOTSUP
+
+    def test_it_refuses_to_publish_when_the_destination_is_free(self, exfat: Path) -> None:
+        temporary = exfat / "publish-staged.bin"
+        temporary.write_bytes(b"payload")
+        destination = exfat / "publish-destination.bin"
+
+        with pytest.raises(PublicationError, match="atomic no-replace publication"):
+            _commit_without_clobbering(temporary, destination)
+
+        assert not destination.exists()
+        assert temporary.read_bytes() == b"payload"
+
+    def test_it_still_refuses_an_existing_destination(self, exfat: Path) -> None:
+        destination = exfat / "refuse-destination.bin"
+        destination.write_bytes(b"somebody else's work")
+        temporary = exfat / "refuse-staged.bin"
+        temporary.write_bytes(b"the new bytes")
+
+        with pytest.raises(PublicationError, match="refusing to overwrite"):
+            _commit_without_clobbering(temporary, destination)
+
+        assert destination.read_bytes() == b"somebody else's work"

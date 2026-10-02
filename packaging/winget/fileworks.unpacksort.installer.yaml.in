@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
+PackageIdentifier: fileworks.unpacksort
+PackageVersion: "{{VERSION}}"
+InstallerType: zip
+NestedInstallerType: portable
+Installers:
+  - Architecture: x64
+    InstallerUrl: "{{URL}}"
+    InstallerSha256: "{{SHA256}}"
+    NestedInstallerFiles:
+      - RelativeFilePath: unpacksort-{{VERSION}}-windows-x64\unpacksort.exe
+        PortableCommandAlias: unpacksort
+ManifestType: installer
+ManifestVersion: 1.12.0
