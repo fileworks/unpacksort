@@ -49,6 +49,11 @@ on:
         required: false
         type: string
         default: "."
+      static-checks:
+        description: Run format, lint and type checks; tests always run.
+        required: false
+        type: boolean
+        default: true
     outputs:
       revision:
         description: The revision of this reusable workflow, for traceability.
@@ -59,6 +64,7 @@ permissions:
 
 jobs:
   gates:
+    timeout-minutes: 20
     runs-on: ${{ inputs.runs-on }}
     outputs:
       revision: ${{ steps.revision.outputs.sha }}
@@ -114,14 +120,17 @@ jobs:
         run: uv sync --locked --all-groups --python "$PYTHON_VERSION"
 
       - name: format
+        if: inputs.static-checks
         working-directory: ${{ inputs.working-directory }}
         run: uv run ruff format --check .
 
       - name: lint
+        if: inputs.static-checks
         working-directory: ${{ inputs.working-directory }}
         run: uv run ruff check .
 
       - name: typecheck
+        if: inputs.static-checks
         working-directory: ${{ inputs.working-directory }}
         env:
           MYPY_TARGET: ${{ inputs.typecheck-target }}
