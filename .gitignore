@@ -14,3 +14,12 @@ dist/
 CLAUDE.local.md
 
 .release-smoke/
+
+# Local agent state; shared instructions/skills remain versioned.
+AGENTS.override.md
+.claude/settings.local.json
+.claude/RESUME.md
+.codex-log/
+.agent-context-state.json
+.agent-context-backups/
+.agent-context.lock
