@@ -19,3 +19,7 @@ uv build
 
 Tests must use compact generated fixtures. Do not commit credentials, personal
 mail, malicious samples, archive bombs, or licensed documents.
+
+Linux CI uses Ubuntu 24.04 while retaining existing logical matrix/check names.
+The full OS/Python matrix and installed-wheel checks remain required. Dependency
+caches do not bypass locked installs, and newer commits cancel obsolete CI runs.
