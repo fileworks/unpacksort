@@ -132,15 +132,39 @@ jobs:
           }
           problems = []
 
+          for required in ("AGENTS.md", "CLAUDE.md", "docs/decisions.md"):
+              if not pathlib.Path(required).is_file():
+                  problems.append(f"{required}: required agent documentation is missing")
+          shim = pathlib.Path("CLAUDE.md")
+          if shim.is_file() and shim.read_text(encoding="utf-8").strip() != "@AGENTS.md":
+              problems.append("CLAUDE.md: must contain only @AGENTS.md")
+          guide = pathlib.Path("AGENTS.md")
+          if guide.is_file():
+              text = guide.read_text(encoding="utf-8")
+              if len(text.splitlines()) > 80:
+                  problems.append("AGENTS.md: keep the shared guide within 80 lines")
+              for heading in ("## Read only what the task needs", "## Before finishing"):
+                  if heading not in text:
+                      problems.append(f"AGENTS.md: missing {heading}")
+              if re.search(r"(?m)^\s*@.*(?:_local|planning)", text):
+                  problems.append("AGENTS.md: private context must not be imported")
+
           for markdown in pathlib.Path(".").rglob("*.md"):
               if any(part in skip for part in markdown.parts):
                   continue
               for target in link.findall(markdown.read_text(encoding="utf-8", errors="replace")):
                   if target.startswith(("http://", "https://", "mailto:", "#")):
                       continue
-                  if not (markdown.parent / target.split("#")[0]).exists():
+                  resolved = (markdown.parent / target.split("#")[0]).resolve()
+                  if not resolved.is_relative_to(pathlib.Path.cwd()):
+                      problems.append(
+                          f"{markdown}: {target} requires context outside this repository"
+                      )
+                  elif not resolved.exists():
                       problems.append(f"{markdown}: {target} does not exist")
 
           for problem in problems:
               print(problem)
+          if not problems:
+              print("Agent guides, conditional routing and local documentation links: OK")
           sys.exit(1 if problems else 0)
