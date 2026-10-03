@@ -8,6 +8,7 @@ decision record. Missing private notes do not block ordinary work.
 
 | Date | Choice | Reason | Owning documentation |
 |---|---|---|---|
+| 2026-10-03 | Pin Linux image; preserve complete public CI | Avoid automatic OS migration while keeping required check names, native evidence and installed-wheel matrices. | [contributing](../CONTRIBUTING.md) |
 | 2026-10-02 | Public source, optional private prebuilt wheels/tap | A general portfolio tool remains anonymously installable from a versioned source tag. | [install](install.md) |
 | 2026-10-02 | Deterministic, bounded archive recovery | Keep provenance and supported-type limits; unsafe links/containers remain unprocessed. | [manual](manual.md) |
 | 2026-10-02 | No PyPI, WinGet or standalone CLI binaries | Current source/wheel/Homebrew routes cover the supported use case. | [release](release.md) |
