@@ -3,6 +3,10 @@
 Open an issue before changing the public manifest, naming, safety-limit, or
 resume contracts. Use a focused branch and a Conventional Commit subject.
 
+Start at [AGENTS.md](AGENTS.md); maintain affected instructions and decisions in
+the same change. Public clones do not need private workspace context. Documentation
+changes do not publish a package or move an existing release tag.
+
 Install with `uv sync --locked --all-groups`, then run:
 
 ```console

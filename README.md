@@ -12,8 +12,9 @@ and retained as unprocessed; source links and archive links are never followed.
 
 ## Status
 
-The v1.0.0 baseline is distributed through private GitHub releases.
-Use the release notes for verified artifact and platform status.
+The v1.0.0 source is public and installable directly. Prebuilt wheels are
+private owner downloads. See [installation](docs/install.md) for both routes;
+source visibility does not imply public binary distribution.
 
 ## Overview
 
@@ -28,52 +29,24 @@ have to trust.
 
 ## Install
 
-Python 3.12+ and Git are required. The public source can be installed directly:
+**Public source installation needs no account or private repository access.**
+Install Python 3.12+, pipx and Git, then run:
 
 ```console
 pipx install git+https://github.com/fileworks/unpacksort.git@v1.0.0
 unpacksort --version
+unpacksort --help
 ```
 
-The owner also has private prebuilt wheels:
+The [installation guide](docs/install.md) includes prerequisite setup for
+Windows/macOS/Linux, updates and optional uv commands.
 
-Download the v1.0.0 wheel from the authenticated
-[private Fileworks releases](https://github.com/fileworks/private-releases/releases).
-Python 3.12+ and pipx (or uv) are required on Windows, macOS and Linux.
-
-```console
-gh auth login
-gh release download v1.0.0 --repo fileworks/private-releases --pattern 'unpacksort-1.0.0-*.whl'
-pipx install ./unpacksort-1.0.0-py3-none-any.whl
-unpacksort --version
-```
-
-PyPI publication has been retired; install the downloaded file, rather than
-an unqualified package name. The private Homebrew tap is optional for authenticated users.
-
-### Private Homebrew installation (macOS)
-
-Your GitHub account needs access to `fileworks/homebrew-tap`. Authenticate Git
-over HTTPS once; clone the tap before invoking Homebrew:
-
-```sh
-brew update
-brew install gh
-gh auth login
-gh auth setup-git
-gh repo clone fileworks/homebrew-tap "$(brew --repository)/Library/Taps/fileworks/homebrew-tap"
-brew tap fileworks/tap
-HOMEBREW_NO_AUTO_UPDATE=1 brew install fileworks/tap/unpacksort
-unpacksort --version
-```
-
-For updates, run `git -C "$(brew --repository fileworks/tap)" pull --ff-only`,
-then replace `brew install` with `brew upgrade` above. A 404 usually means the GitHub account
-lacks access. Do not put tokens in URLs or commit them. The tap verifies the
-bundled application wheel and installs pinned dependency wheels without an index.
-
-For wheel checksums, Windows/macOS setup, and upgrades, see the
-[private installation guide](https://github.com/fileworks/private-releases#installation).
+The owner also has private prebuilt wheels through the
+[authenticated release guide](https://github.com/fileworks/private-releases#installation).
+Private wheels/tap require separate GitHub access; they are optional.
+On macOS, after [private tap setup](https://github.com/fileworks/homebrew-tap#install),
+use `HOMEBREW_NO_AUTO_UPDATE=1 brew install fileworks/tap/unpacksort`.
+PyPI and WinGet distribution are retired.
 
 ## Quick start
 
@@ -158,6 +131,9 @@ a bug worth reporting, with the two manifests.
 
 ## Development
 
+[Agent routes](AGENTS.md) and [maintained decisions](docs/decisions.md) point to
+the relevant contracts; private workspace notes are optional.
+
 ```console
 uv sync --locked --all-groups
 uv run ruff check . && uv run ruff format --check .   # lint
@@ -167,11 +143,12 @@ uv build                                              # sdist + wheel
 ```
 
 Renovate batches routine non-major updates into one weekly `fix(deps)` pull
-request, permits only one dependency branch, and squash-merges only after all
+request, permits one routine dependency branch, and squash-merges only after all
 checks pass. Major, replacement, and rollback updates require explicit
-Dependency Dashboard approval and never auto-merge. Releases are created from
-Conventional Commits after all source, wheel, and Windows portable checks pass;
-the operator runbook is [docs/release.md](docs/release.md).
+Dependency Dashboard approval and never auto-merge; urgent vulnerability updates
+require separate review. Candidates must pass source and installed-wheel E2E
+checks. Private publication is a separate authorized step; standalone Windows
+CLI binaries are not provided. See [docs/release.md](docs/release.md).
 
 Use an ignored `CLAUDE.local.md` at the repository root for per-clone paths,
 commands, or private preferences. Never store credentials or other secrets
