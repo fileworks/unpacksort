@@ -12,7 +12,7 @@ and retained as unprocessed; source links and archive links are never followed.
 
 ## Status
 
-The v1.0.0 source is public and installable directly. Prebuilt wheels are
+Source is public and installable from a reviewed release tag. Prebuilt wheels are
 private owner downloads. See [installation](docs/install.md) for both routes;
 source visibility does not imply public binary distribution.
 
@@ -30,10 +30,11 @@ have to trust.
 ## Install
 
 **Public source installation needs no account or private repository access.**
-Install Python 3.12+, pipx and Git, then run:
+Install Python 3.12+, pipx and Git. Replace `RELEASE_TAG` with a stable tag
+from [public tags](https://github.com/fileworks/unpacksort/tags), then run:
 
 ```console
-pipx install git+https://github.com/fileworks/unpacksort.git@v1.0.0
+pipx install git+https://github.com/fileworks/unpacksort.git@RELEASE_TAG
 unpacksort --version
 unpacksort --help
 ```
