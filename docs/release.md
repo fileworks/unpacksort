@@ -1,7 +1,7 @@
 # Release procedure
 
-The v1.0.0 baseline has public source and private prebuilt downloads.
-PyPI and WinGet publication are retired. Source tags are immutable after the restart.
+Source is public; prebuilt downloads are private. PyPI and WinGet publication
+are retired. Published source tags and distribution assets are immutable.
 
 1. Run locked Ruff, formatting, strict mypy, and pytest.
 2. Require successful Quality checks for the exact source commit, including
@@ -15,4 +15,5 @@ PyPI and WinGet publication are retired. Source tags are immutable after the res
 7. Verify downloaded bytes against SHA256SUMS and update the private ledger.
 
 The manual Release workflow verifies builds and CLI startup; it cannot publish.
-See [README](../README.md#install) for authenticated installation and updates.
+See the [install guide](install.md) for public source and optional authenticated
+downloads. Keep README commands independent of the current release number.

@@ -17,24 +17,26 @@ If pipx selects an older interpreter, add `--python /path/to/python3.12` to inst
 
 ## Install and check
 
-Run in PowerShell, Terminal or a Linux shell:
+Choose a stable release from [public tags](https://github.com/fileworks/unpacksort/tags).
+Replace every `RELEASE_TAG` below with that chosen tag, including its `v` prefix.
+Run in PowerShell, Terminal or Linux:
 
 ```console
-pipx install git+https://github.com/fileworks/unpacksort.git@v1.0.0
+pipx install git+https://github.com/fileworks/unpacksort.git@RELEASE_TAG
 unpacksort --version
 unpacksort --help
 ```
 
 Then follow the [quick start](../README.md#quick-start) on a small disposable
-sample. Expected baseline: 1.0.0. Source installation builds a wheel locally;
-dependencies download from their public sources.
+sample. `--version` must match the chosen tag without its `v` prefix. Source
+installation builds a wheel locally; dependencies use their public sources.
 
 For a later release, replace the tag and use `pipx install --force` with the
 versioned Git URL. To remove it: `pipx uninstall unpacksort`. Do not use
 `pipx install unpacksort`; our PyPI publication is retired.
 
 If you already use [uv](https://docs.astral.sh/uv/guides/tools/), the alternative
-is `uv tool install --python 3.12 git+https://github.com/fileworks/unpacksort.git@v1.0.0`,
+is `uv tool install --python 3.12 git+https://github.com/fileworks/unpacksort.git@RELEASE_TAG`,
 then `uv tool update-shell` and reopen the terminal. Pick one tool manager.
 
 ## Optional private downloads
