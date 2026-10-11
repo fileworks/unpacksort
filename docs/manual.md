@@ -20,7 +20,11 @@ A regular file that is not a structural mbox is rejected. Inside a directory,
 parser-confirmed mbox and RFC 5322 files are treated as mail containers; an
 `.eml` or `.mbox` extension alone is not enough. Directory discovery reads only
 regular files and never follows a symlink, reparse point, device, FIFO, or
-socket.
+socket. That holds for every later read too: each source file is reopened below
+the source root without following links (an `openat` walk on Linux and macOS, a
+handle identity and final-path check on Windows). A file or folder replaced by a
+link or special file after the scan is recorded as `unsafe_entry`, and nothing
+outside the source is read.
 
 The source and destination cannot alias, contain one another in an unsafe
 direction, or resolve through a link to the same location.

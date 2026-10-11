@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import mailbox
+import os
 from collections.abc import Iterator
 from dataclasses import dataclass
 from email import policy
@@ -40,15 +41,20 @@ class MailLeaf:
     attached_message: bool = False
 
 
-def is_confirmed_mbox(path: Path) -> bool:
-    """Recognize an mbox through delimiter and parseable-message evidence."""
+def is_confirmed_mbox(path: Path, *, identity: os.stat_result | None = None) -> bool:
+    """Recognize an mbox through delimiter and parseable-message evidence.
+
+    With *identity*, every handle opened by path must be that same file; a
+    replacement after confinement was proven is treated as not an mbox.
+    """
 
     try:
         with path.open("rb") as stream:
+            _require_identity(stream.fileno(), identity)
             first = stream.readline(4096)
         if not first.startswith(b"From "):
             return False
-        box = mailbox.mbox(path, factory=_parse_mailbox_message, create=False)
+        box = _open_mbox(path, identity)
         try:
             return any(_has_message_evidence(message) for message in box)
         finally:
@@ -72,10 +78,10 @@ def is_confirmed_message(path: Path) -> bool:
     return identity_count >= MIN_IDENTITY_HEADERS or (identity_count >= 1 and structural)
 
 
-def iter_mbox(path: Path) -> Iterator[MailLeaf]:
+def iter_mbox(path: Path, *, identity: os.stat_result | None = None) -> Iterator[MailLeaf]:
     """Yield leaves in physical message and parser MIME order."""
 
-    box = mailbox.mbox(path, factory=_parse_mailbox_message, create=False)
+    box = _open_mbox(path, identity)
     try:
         found = False
         for message_index, message in enumerate(box, start=1):
@@ -105,6 +111,30 @@ def iter_mbox(path: Path) -> Iterator[MailLeaf]:
             )
     finally:
         box.close()
+
+
+def _open_mbox(path: Path, identity: os.stat_result | None) -> mailbox.mbox:
+    box = mailbox.mbox(path, factory=_parse_mailbox_message, create=False)
+    try:
+        handle = getattr(box, "_file", None)
+        if identity is not None and handle is None:
+            msg = "mailbox handle is unavailable for identity verification"
+            raise OSError(msg)
+        if handle is not None:
+            _require_identity(handle.fileno(), identity)
+    except BaseException:
+        box.close()
+        raise
+    return box
+
+
+def _require_identity(descriptor: int, identity: os.stat_result | None) -> None:
+    if identity is None:
+        return
+    actual = os.fstat(descriptor)
+    if (actual.st_dev, actual.st_ino) != (identity.st_dev, identity.st_ino):
+        msg = "mailbox source changed after it was confirmed"
+        raise OSError(msg)
 
 
 def iter_message(payload: bytes, ancestry: tuple[AncestryNode, ...]) -> Iterator[MailLeaf]:
