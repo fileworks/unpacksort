@@ -422,3 +422,11 @@ def test_digest_ancestor_cycle_is_reported_without_expansion(tmp_path: Path) -> 
         containers = journal.container_records()
     assert occurrences[0]["reason"] == "cycle"
     assert containers[0]["reason"] == "cycle"
+
+
+def test_a_rejected_invocation_creates_no_default_logfile(tmp_path: Path) -> None:
+    """US-04: validation runs before logging, so a typo leaves nothing behind."""
+    result = runner.invoke(app, [str(tmp_path / "missing"), str(tmp_path / "out")])
+
+    assert result.exit_code == ExitOutcome.USAGE
+    assert not (tmp_path / "unpacksort.log").exists()
