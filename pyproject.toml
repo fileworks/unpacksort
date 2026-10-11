@@ -45,12 +45,10 @@ dev = [
   "hypothesis==6.164.0",
   "mypy==2.3.0",
   "pip-audit==2.10.1",
-  "pyinstaller==6.21.0",
   "PyYAML==6.0.3",
   "types-PyYAML==6.0.12.20250915",
   "pytest==9.1.1",
   "pytest-cov==7.1.0",
-  "python-semantic-release==10.6.1",
   "ruff==0.16.1",
 ]
 
@@ -107,23 +105,3 @@ filterwarnings = ["error::ResourceWarning"]
 
 [tool.coverage.run]
 omit = ["src/unpacksort/__main__.py"]
-
-[tool.semantic_release]
-version_toml = ["pyproject.toml:project.version"]
-build_command = """
-python -m pip install uv==0.11.18
-uv lock --upgrade-package "$PACKAGE_NAME"
-git add uv.lock
-uv build --build-constraints build-constraints.txt
-"""
-commit_author = "Gykonik <gykonik@gmail.com>"
-commit_message = "chore(release): {version}\n\n- publish immutable release metadata"
-tag_format = "v{version}"
-major_on_zero = false
-
-[tool.semantic_release.changelog]
-mode = "update"
-
-[tool.semantic_release.branches.main]
-match = "main"
-prerelease = false
