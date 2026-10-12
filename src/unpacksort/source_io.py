@@ -98,8 +98,13 @@ def _open_by_identity(path: Path, root: Path, relative: Path) -> int:
         if not same_file or not stat.S_ISREG(after.st_mode):
             msg = f"source file changed while it was opened: {relative.as_posix()}"
             raise UnsafeSourceError(msg)
+        # Matching leaf identity does not prove confinement once an ancestor
+        # may have changed; without the resolved path there is no proof.
         final = _final_path(descriptor)
-        if final is not None and not _is_below(final, root):
+        if final is None:
+            msg = f"source file location could not be verified: {relative.as_posix()}"
+            raise UnsafeSourceError(msg)
+        if not _is_below(final, root):
             msg = f"source file resolves outside its root: {relative.as_posix()}"
             raise UnsafeSourceError(msg)
     except BaseException:

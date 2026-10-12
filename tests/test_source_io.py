@@ -111,9 +111,14 @@ def _fake_stat(
     return os.stat_result(fields)
 
 
-def test_identity_opener_reads_the_inspected_file(tmp_path: Path) -> None:
+def test_identity_opener_reads_the_inspected_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     root, _ = _tree(tmp_path)
     leaf = root / "album" / "photo.txt"
+    if os.name != "nt":
+        # Only Windows resolves a handle's path; elsewhere this opener is test-only.
+        monkeypatch.setattr(source_io, "_final_path", lambda _descriptor: os.path.realpath(leaf))
     descriptor = source_io._open_by_identity(leaf, root, leaf.relative_to(root))
     with os.fdopen(descriptor, "rb") as stream:
         assert stream.read() == b"inside the source"
@@ -142,6 +147,18 @@ def test_identity_opener_refuses_a_handle_that_resolves_outside_the_root(
     leaf = root / "album" / "photo.txt"
     monkeypatch.setattr(source_io, "_final_path", lambda _descriptor: str(outside / "photo.txt"))
     with pytest.raises(UnsafeSourceError, match="outside its root"):
+        source_io._open_by_identity(leaf, root, leaf.relative_to(root))
+
+
+def test_identity_opener_refuses_when_the_final_path_cannot_be_resolved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # F1-002: an ancestor swapped before the leaf check keeps the leaf identity;
+    # a failed final-path query must not then permit the read.
+    root, _ = _tree(tmp_path)
+    leaf = root / "album" / "photo.txt"
+    monkeypatch.setattr(source_io, "_final_path", lambda _descriptor: None)
+    with pytest.raises(UnsafeSourceError, match="could not be verified"):
         source_io._open_by_identity(leaf, root, leaf.relative_to(root))
 
 
