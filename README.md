@@ -6,6 +6,8 @@
 supported archives and attached messages, removes byte-identical duplicates, and
 publishes a deterministic type-grouped result with complete provenance.
 
+## Overview
+
 It supports Python 3.12+, ZIP/ZIP64, TAR (plain, gzip, bzip2, xz, and zstandard),
 7z, parser-validated PDFs, and common ZIP application packages. RAR is detected
 and retained as unprocessed; source links and archive links are never followed.
@@ -136,11 +138,13 @@ uv run pytest                                         # tests
 uv build                                              # sdist + wheel
 ```
 
-Renovate batches routine non-major updates into one weekly `fix(deps)` pull
-request, permits one routine dependency branch, and squash-merges only after all
-checks pass. Major, replacement, and rollback updates require explicit
-Dependency Dashboard approval and never auto-merge; urgent vulnerability updates
-require separate review. Candidates must pass source and installed-wheel E2E
+Renovate batches routine non-major updates into weekly `fix(deps)` pull
+requests, one per ecosystem (Python packages, CI actions), and squash-merges each
+only after all checks pass. Python updates stay within `requires-python`; major
+caps such as `<9` stay routine. Python runtime moves, updates under a sub-major
+cap, and major, replacement, and rollback updates require explicit Dependency
+Dashboard approval and never auto-merge; urgent vulnerability updates require
+separate review. Candidates must pass source and installed-wheel E2E
 checks. Private publication is a separate authorized step; standalone Windows
 CLI binaries are not provided. See [docs/release.md](docs/release.md).
 
