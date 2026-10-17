@@ -109,9 +109,6 @@ def main(
 
     del version
     try:
-        logfile = log_file or destination.parent / "unpacksort.log"
-        configure_logging(logfile, verbose=verbose)
-        logging.getLogger(__name__).info("unpacksort started; logfile=%s", logfile)
         policy = Policy(
             layout="flatten" if flatten else "hierarchy",
             pdf_only=pdf_only,
@@ -125,6 +122,11 @@ def main(
         )
         policy.validate()
         _validate_paths(source, destination)
+        # Only a valid invocation may create a logfile: a rejected one must not
+        # leave unpacksort.log beside a destination the user mistyped.
+        logfile = log_file or destination.parent / "unpacksort.log"
+        configure_logging(logfile, verbose=verbose)
+        logging.getLogger(__name__).info("unpacksort started; logfile=%s", logfile)
     except (OSError, ValueError) as error:
         typer.echo(f"input error: {error}", err=True)
         raise typer.Exit(ExitOutcome.USAGE) from error

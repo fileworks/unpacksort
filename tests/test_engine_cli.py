@@ -422,3 +422,53 @@ def test_digest_ancestor_cycle_is_reported_without_expansion(tmp_path: Path) -> 
         containers = journal.container_records()
     assert occurrences[0]["reason"] == "cycle"
     assert containers[0]["reason"] == "cycle"
+
+
+def test_a_rejected_invocation_creates_no_default_logfile(tmp_path: Path) -> None:
+    """US-04: validation runs before logging, so a typo leaves nothing behind."""
+    result = runner.invoke(app, [str(tmp_path / "missing"), str(tmp_path / "out")])
+
+    assert result.exit_code == ExitOutcome.USAGE
+    assert not (tmp_path / "unpacksort.log").exists()
+
+
+def test_an_mbox_inside_a_directory_source_is_traversed(tmp_path: Path, mbox_path: Path) -> None:
+    """The confined reader checks the mailbox it parses is the file it inspected."""
+    source = tmp_path / "archive"
+    source.mkdir()
+    mbox_path.rename(source / "mail.mbox")
+    destination = tmp_path / "output"
+
+    _manifest, _report, outcome = Processor(source, destination, Policy()).run()
+
+    assert outcome is ExitOutcome.SUCCESS
+    assert [path.read_bytes() for path in destination.rglob("a.bin")] == [b"payload"]
+
+
+@pytest.mark.parametrize(
+    ("arrange", "message"),
+    [
+        ("destination_is_file", "destination exists and is not a directory"),
+        ("destination_inside_source", "destination cannot be inside the source tree"),
+        ("source_inside_destination", "source cannot be inside the destination"),
+        ("same_folder", "alias each other"),
+    ],
+)
+def test_unsafe_path_combinations_are_usage_errors(
+    tmp_path: Path, arrange: str, message: str
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    destination = {
+        "destination_is_file": tmp_path / "file.txt",
+        "destination_inside_source": source / "out",
+        "source_inside_destination": tmp_path,
+        "same_folder": source,
+    }[arrange]
+    if arrange == "destination_is_file":
+        destination.write_text("not a folder", encoding="utf-8")
+
+    result = runner.invoke(app, [str(source), str(destination)])
+
+    assert result.exit_code == ExitOutcome.USAGE
+    assert message in result.stderr

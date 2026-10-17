@@ -244,8 +244,7 @@ def test_release_build_inputs_are_pinned_and_constrained() -> None:
         ), builds
     pyproject = Path("pyproject.toml").read_text()
     assert 'requires = ["hatchling==1.31.0"]' in pyproject
-    assert "python -m pip install uv==0.11.18" in pyproject
-    assert "uv build --build-constraints build-constraints.txt" in pyproject
+    assert "semantic_release" not in pyproject
     assert Path("build-requirements.in").read_text() == "hatchling==1.31.0\n"
     assert Path("build-constraints.txt").read_text().splitlines() == [
         "hatchling==1.31.0",

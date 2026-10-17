@@ -10,22 +10,15 @@ It supports Python 3.12+, ZIP/ZIP64, TAR (plain, gzip, bzip2, xz, and zstandard)
 7z, parser-validated PDFs, and common ZIP application packages. RAR is detected
 and retained as unprocessed; source links and archive links are never followed.
 
+Deterministic means the same input produces the same output, every time — which
+is what makes a recovery run something you can check rather than something you
+have to trust.
+
 ## Status
 
 Source is public and installable from a reviewed release tag. Prebuilt wheels are
 private owner downloads. See [installation](docs/install.md) for both routes;
 source visibility does not imply public binary distribution.
-
-## Overview
-
-`unpacksort` recovers files from a mailbox or a directory tree: it opens nested
-archives and attached messages, removes byte-identical duplicates, and publishes
-a deterministic, type-grouped result with a manifest recording where every file
-came from.
-
-Deterministic means the same input produces the same output, every time — which
-is what makes a recovery run something you can check rather than something you
-have to trust.
 
 ## Install
 

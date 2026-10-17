@@ -3,6 +3,11 @@
 Source is public; prebuilt downloads are private. PyPI and WinGet publication
 are retired. Published source tags and distribution assets are immutable.
 
+Publication names: public source `fileworks/unpacksort`, private wheels in
+`fileworks/private-releases`, private Homebrew formula `fileworks/tap/unpacksort`.
+Retired PyPI filenames cannot be reused after deletion; the private release hub
+avoids that limitation.
+
 1. Run locked Ruff, formatting, strict mypy, and pytest.
 2. Require successful Quality checks for the exact source commit, including
    all OS/Python installed-wheel E2E jobs and real exFAT refusal evidence.

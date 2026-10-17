@@ -8,6 +8,7 @@ decision record. Missing private notes do not block ordinary work.
 
 | Date | Choice | Reason | Owning documentation |
 |---|---|---|---|
+| 2026-10-11 | Source reads are confined at open time, not only at inventory | A path or ancestor swapped for a link after the scan could redirect reads outside the source; every read now proves the opened handle is a regular file below the root and fails closed as `unsafe_entry`. | [manual](manual.md) |
 | 2026-10-04 | Choose a published stable source tag at install time | Keep anonymous installation reproducible without stale README version literals or unreleased main installs. | [install](install.md) |
 | 2026-10-03 | Portable agent routes and task-time documentation maintenance | Standalone development stays self-contained; docs/routes change with behavior. | [agent guide](../AGENTS.md) |
 | 2026-10-03 | Pin Linux image; preserve complete public CI | Avoid automatic OS migration while keeping required check names, native evidence and installed-wheel matrices. | [contributing](../CONTRIBUTING.md) |

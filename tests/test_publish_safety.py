@@ -15,6 +15,7 @@ import hashlib
 import os
 import platform
 import shutil
+import stat
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
@@ -24,7 +25,12 @@ import pytest
 
 from unpacksort.journal import Journal
 from unpacksort.models import Blob
-from unpacksort.storage import BlobStore, PublicationError, _commit_without_clobbering
+from unpacksort.storage import (
+    BlobStore,
+    PublicationError,
+    _commit_without_clobbering,
+    _hash_closed_stage,
+)
 
 
 @pytest.fixture
@@ -362,3 +368,58 @@ class TestNoHardLinksOnRealFilesystem:
             _commit_without_clobbering(temporary, destination)
 
         assert destination.read_bytes() == b"somebody else's work"
+
+
+def test_a_missing_stage_cannot_be_verified(tmp_path: Path) -> None:
+    with pytest.raises(PublicationError, match="cannot safely reopen"):
+        _hash_closed_stage(tmp_path / "vanished.tmp")
+
+
+def test_a_stage_renamed_away_during_verification_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stage = tmp_path / "stage.tmp"
+    stage.write_bytes(b"staged")
+
+    def gone(self: Path) -> os.stat_result:
+        raise FileNotFoundError(self)
+
+    monkeypatch.setattr(Path, "lstat", gone)
+    with pytest.raises(PublicationError, match="pathname changed"):
+        _hash_closed_stage(stage)
+
+
+def test_a_stage_that_is_not_the_opened_file_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stage = tmp_path / "stage.tmp"
+    stage.write_bytes(b"staged")
+    other = tmp_path / "other.tmp"
+    other.write_bytes(b"other")
+    impostor = other.stat()
+    monkeypatch.setattr(Path, "lstat", lambda _self: impostor)
+    with pytest.raises(PublicationError, match="not the owned regular file"):
+        _hash_closed_stage(stage)
+
+
+def test_a_stage_that_grows_while_it_is_hashed_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stage = tmp_path / "stage.tmp"
+    stage.write_bytes(b"staged")
+    real_fstat = os.fstat
+    calls = 0
+
+    def growing(descriptor: int) -> os.stat_result:
+        nonlocal calls
+        calls += 1
+        result = real_fstat(descriptor)
+        if calls < 2:
+            return result
+        fields = list(result)
+        fields[stat.ST_SIZE] = result.st_size + 1
+        return os.stat_result(fields)
+
+    monkeypatch.setattr(os, "fstat", growing)
+    with pytest.raises(PublicationError, match="changed while it was verified"):
+        _hash_closed_stage(stage)

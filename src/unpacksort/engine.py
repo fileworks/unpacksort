@@ -44,6 +44,7 @@ from unpacksort.policy import Accounting, ContainerAccounting, LimitExceededErro
 from unpacksort.progress import NullProgress, ProgressSink
 from unpacksort.reporting import write_outputs
 from unpacksort.safety import portable_text_key, safe_component
+from unpacksort.source_io import UnsafeSourceError, open_source
 from unpacksort.storage import BlobStore
 
 
@@ -146,7 +147,7 @@ class _SourceInventory:
                 digest.update(unsafe_reason.value.encode())
             else:
                 try:
-                    _update_file_digest(digest, candidate)
+                    _update_file_digest(digest, candidate, source)
                     if on_file is not None:
                         on_file()
                 except OSError:
@@ -300,7 +301,9 @@ class Processor:
 
     def _discover(self, journal: Journal, store: BlobStore) -> None:
         if self.source.is_file():
-            for leaf in iter_mbox(self.source):
+            for leaf in iter_mbox(
+                self.source, identity=_source_identity(self.source, self.source.parent)
+            ):
                 self._process_mail_leaf(
                     leaf,
                     journal,
@@ -321,8 +324,9 @@ class Processor:
                 )
                 continue
             try:
-                if is_confirmed_mbox(path):
-                    for leaf in iter_mbox(path):
+                identity = _source_identity(path, self.source)
+                if is_confirmed_mbox(path, identity=identity):
+                    for leaf in iter_mbox(path, identity=identity):
                         self._process_mail_leaf(
                             leaf,
                             journal,
@@ -332,7 +336,7 @@ class Processor:
                             source_ancestry=ancestry,
                         )
                     continue
-                blob = self._ingest_path(path, store, ())
+                blob = self._ingest_path(path, self.source, store, ())
                 self._process_blob(
                     blob,
                     logical_name=path.name,
@@ -346,9 +350,14 @@ class Processor:
                     diagnostics=(),
                 )
             except (OSError, LimitExceededError) as error:
-                reason = (
-                    error.reason if isinstance(error, LimitExceededError) else Reason.UNREADABLE
-                )
+                if isinstance(error, LimitExceededError):
+                    reason = error.reason
+                elif isinstance(error, UnsafeSourceError):
+                    # Replaced by a link or special file after inventory: fail
+                    # closed rather than read whatever it now points at.
+                    reason = Reason.UNSAFE_ENTRY
+                else:
+                    reason = Reason.UNREADABLE
                 self._record_failure(
                     journal,
                     source_path=relative_path,
@@ -868,18 +877,22 @@ class Processor:
     def _ingest_path(
         self,
         path: Path,
+        root: Path,
         store: BlobStore,
         budgets: tuple[ContainerAccounting, ...],
     ) -> Blob:
-        size = path.stat(follow_symlinks=False).st_size
-        self._preflight_payload(size, budgets)
-        limit, reason, owner = self._payload_bound(budgets)
-        blob = store.ingest_path(
-            path,
-            max_bytes=limit,
-            limit_reason=reason,
-            limit_owner=owner,
-        )
+        with open_source(path, root) as stream:
+            # Size from the opened handle, so the budget and the bytes read
+            # describe the same file even if the path was swapped meanwhile.
+            size = os.fstat(stream.fileno()).st_size
+            self._preflight_payload(size, budgets)
+            limit, reason, owner = self._payload_bound(budgets)
+            blob = store.ingest_stream(
+                stream,
+                max_bytes=limit,
+                limit_reason=reason,
+                limit_owner=owner,
+            )
         self._charge_payload(blob.size, budgets)
         return blob
 
@@ -987,7 +1000,7 @@ def fingerprint_source(
     if path.is_file():
         digest.update(b"mbox\0")
         digest.update(path.name.encode("utf-8", "surrogatepass"))
-        _update_file_digest(digest, path)
+        _update_file_digest(digest, path, path.parent)
         if on_file is not None:
             on_file()
         return SourceIdentity("mbox", path.name, digest.hexdigest())
@@ -999,7 +1012,7 @@ def fingerprint_source(
             digest.update(unsafe_reason.value.encode())
         else:
             try:
-                _update_file_digest(digest, candidate)
+                _update_file_digest(digest, candidate, path)
                 if on_file is not None:
                     on_file()
             except OSError:
@@ -1088,10 +1101,17 @@ def _walk_directory(
     yield from visit(root, PurePosixPath())
 
 
-def _update_file_digest(digest: DigestWriter, path: Path) -> None:
-    with path.open("rb") as stream:
+def _update_file_digest(digest: DigestWriter, path: Path, root: Path) -> None:
+    with open_source(path, root) as stream:
         while chunk := stream.read(1024 * 1024):
             digest.update(chunk)
+
+
+def _source_identity(path: Path, root: Path) -> os.stat_result:
+    """Identity of the confined regular file, for readers that reopen by path."""
+
+    with open_source(path, root) as stream:
+        return os.fstat(stream.fileno())
 
 
 def _stable_id(prefix: str, *values: str) -> str:
@@ -1111,8 +1131,12 @@ def _canonical_name(name: str, extension: str) -> tuple[str, tuple[str, ...]]:
 
 
 def _sha256(path: Path) -> str:
+    """Digest of a published destination file, which this run owns."""
+
     digest = hashlib.sha256()
-    _update_file_digest(digest, path)
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
     return digest.hexdigest()
 
 
