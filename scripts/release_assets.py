@@ -23,13 +23,16 @@ def main() -> None:
         write_checksums(arguments.directory, arguments.output)
 
 
+# uv build writes this marker into the output directory; it is never an asset.
+BUILD_MARKERS = frozenset({".gitignore"})
+
+
 def _candidate_files(directory: Path) -> list[Path]:
-    """Return release files, skipping hidden entries such as uv's `dist/.gitignore`."""
+    """Return every release file except top-level build markers."""
     return sorted(
         path
         for path in directory.rglob("*")
-        if path.is_file()
-        and not any(part.startswith(".") for part in path.relative_to(directory).parts)
+        if path.is_file() and not (path.parent == directory and path.name in BUILD_MARKERS)
     )
 
 
