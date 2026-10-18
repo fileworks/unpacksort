@@ -120,8 +120,9 @@ sha256sum -c SHA256SUMS
 
 In the private `maintenance` repository, replace the `unpacksort`
 `github_release` entry in `release-observations.json` (version, `verified`,
-tag/commit/run IDs/checks in `detail`, `observed_at`) and bump the top-level
-`observed_at`. From the workspace root that contains `maintenance/`:
+tag/commit/run IDs/checks in `detail`, `observed_at`); the ledger's
+`generated_at` follows the newest entry. From the workspace root that contains
+`maintenance/`:
 
 ```sh
 python -B -m maintenance.refresh_release_ledger
