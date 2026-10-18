@@ -23,8 +23,21 @@ def main() -> None:
         write_checksums(arguments.directory, arguments.output)
 
 
+# uv build writes this marker into the output directory; it is never an asset.
+BUILD_MARKERS = frozenset({".gitignore"})
+
+
+def _candidate_files(directory: Path) -> list[Path]:
+    """Return every release file except top-level build markers."""
+    return sorted(
+        path
+        for path in directory.rglob("*")
+        if path.is_file() and not (path.parent == directory and path.name in BUILD_MARKERS)
+    )
+
+
 def verify_assets(directory: Path, version: str) -> None:
-    files = sorted(path for path in directory.rglob("*") if path.is_file())
+    files = _candidate_files(directory)
     wheels = [path for path in files if path.suffix == ".whl"]
     source_archives = [path for path in files if path.name.endswith(".tar.gz")]
     if (
@@ -42,7 +55,7 @@ def verify_assets(directory: Path, version: str) -> None:
 
 def write_checksums(directory: Path, output: Path) -> None:
     lines: list[str] = []
-    for path in sorted(candidate for candidate in directory.rglob("*") if candidate.is_file()):
+    for path in _candidate_files(directory):
         if path == output:
             continue
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
