@@ -82,8 +82,8 @@ publish.
 
 ## 4. Build once and verify the candidate
 
-Build from a clean clone of the tag, and stage only the two distributions (uv
-also writes `dist/.gitignore`, which `release_assets.py verify` rejects):
+Build from a clean clone of the tag, and stage only the two distributions, so
+the upload folder holds exactly what `verify` and `SHA256SUMS` cover:
 
 ```sh
 WORK=$(mktemp -d)
