@@ -23,8 +23,18 @@ def main() -> None:
         write_checksums(arguments.directory, arguments.output)
 
 
+def _candidate_files(directory: Path) -> list[Path]:
+    """Return release files, skipping hidden entries such as uv's `dist/.gitignore`."""
+    return sorted(
+        path
+        for path in directory.rglob("*")
+        if path.is_file()
+        and not any(part.startswith(".") for part in path.relative_to(directory).parts)
+    )
+
+
 def verify_assets(directory: Path, version: str) -> None:
-    files = sorted(path for path in directory.rglob("*") if path.is_file())
+    files = _candidate_files(directory)
     wheels = [path for path in files if path.suffix == ".whl"]
     source_archives = [path for path in files if path.name.endswith(".tar.gz")]
     if (
@@ -42,7 +52,7 @@ def verify_assets(directory: Path, version: str) -> None:
 
 def write_checksums(directory: Path, output: Path) -> None:
     lines: list[str] = []
-    for path in sorted(candidate for candidate in directory.rglob("*") if candidate.is_file()):
+    for path in _candidate_files(directory):
         if path == output:
             continue
         digest = hashlib.sha256(path.read_bytes()).hexdigest()

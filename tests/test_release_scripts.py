@@ -28,6 +28,16 @@ def test_release_asset_validation_and_checksums(tmp_path: Path) -> None:
     assert f"{hashlib.sha256(wheel.read_bytes()).hexdigest()}  {wheel.name}" in lines
 
 
+def test_hidden_build_files_are_not_release_assets(tmp_path: Path) -> None:
+    candidate = tmp_path / "source"
+    _candidate(candidate, "1.2.3")
+    (candidate / ".gitignore").write_text("*", encoding="utf-8")
+    release_assets.verify_assets(candidate, "1.2.3")
+    checksum_path = tmp_path / "SHA256SUMS"
+    release_assets.write_checksums(candidate, checksum_path)
+    assert ".gitignore" not in checksum_path.read_text(encoding="utf-8")
+
+
 def test_release_asset_validation_rejects_mismatch(tmp_path: Path) -> None:
     with pytest.raises(SystemExit, match="exactly one"):
         release_assets.verify_assets(tmp_path, "1.0.0")
