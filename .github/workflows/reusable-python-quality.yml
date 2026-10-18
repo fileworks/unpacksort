@@ -69,14 +69,12 @@ jobs:
     outputs:
       revision: ${{ steps.revision.outputs.sha }}
     steps:
-      # actions/checkout v7
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - id: revision
         run: echo "sha=${{ github.workflow_sha }}" >> "$GITHUB_OUTPUT"
 
-      # astral-sh/setup-uv v9.0.0
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: ${{ inputs.python-version }}
           enable-cache: true
@@ -97,8 +95,7 @@ jobs:
 
       - name: Install Poppler on the test runner
         if: inputs.install-poppler
-        # awalsh128/cache-apt-pkgs-action v1.6.3
-        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
         with:
           packages: poppler-utils
           version: "1.0"
