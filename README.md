@@ -140,9 +140,9 @@ uv build                                              # sdist + wheel
 
 Renovate batches routine non-major updates into weekly `fix(deps)` pull
 requests, one per ecosystem (Python packages, CI actions), and squash-merges each
-only after all checks pass. Python updates stay within `requires-python`; major
-caps such as `<9` stay routine. Python runtime moves, updates under a sub-major
-cap, and major, replacement, and rollback updates require explicit Dependency
+only after all checks pass. Direct Python dependencies are exact pins, so each lock update installs
+exactly the release that passed the seven-day soak, within `requires-python`.
+Python runtime moves, updates under a sub-major cap, and major, replacement, and rollback updates require explicit Dependency
 Dashboard approval and never auto-merge; urgent vulnerability updates require
 separate review. Candidates must pass source and installed-wheel E2E
 checks. Private publication is a separate authorized step; standalone Windows
