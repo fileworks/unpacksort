@@ -23,11 +23,11 @@ classifiers = [
   "Topic :: System :: Archiving",
 ]
 dependencies = [
-  "click>=8.3.3,<9",
-  "pikepdf>=9.5,<11",
-  "py7zr>=0.22,<2",
-  "typer>=0.16,<1",
-  "zstandard>=0.23,<1",
+  "click==8.4.2",
+  "pikepdf==10.11.0",
+  "py7zr==1.1.3",
+  "typer==0.27.1",
+  "zstandard==0.25.0",
 ]
 
 [project.urls]
