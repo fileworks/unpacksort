@@ -33,16 +33,18 @@ jobs:
         python: ["3.12", "3.13", "3.14"]
     uses: ./.github/workflows/reusable-python-quality.yml
     with:
-      runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
+      runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os == 'macos-latest' && 'macos-26' || matrix.os == 'windows-latest' && 'windows-2025' || matrix.os }}
       python-version: ${{ matrix.python }}
       sync-mode: all-groups
       # This repository audits advisories in its own job below, on one runner
       # rather than nine.
       audit: false
+      static-checks: ${{ matrix.os == 'ubuntu-latest' && matrix.python == '3.12' }}
 
   build:
+    timeout-minutes: 15
     name: installed wheel (${{ matrix.os }}, Python ${{ matrix.python }})
-    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os == 'macos-latest' && 'macos-26' || matrix.os == 'windows-latest' && 'windows-2025' || matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -54,6 +56,8 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          cache-suffix: ${{ github.workflow }}-${{ github.job }}-${{ strategy.job-index }}
       - name: Build source and wheel
         run: uv build --build-constraints build-constraints.txt
       - name: Install only the wheel and declared dependencies
@@ -73,6 +77,7 @@ jobs:
           python scripts/installed_e2e.py --command "$command_path"
 
   exfat-evidence:
+    timeout-minutes: 20
     name: exFAT no-replace refusal evidence
     # `_commit_without_clobbering` refuses filesystems that cannot hard-link,
     # and the only thing proving that premise is a real exFAT volume. The
@@ -80,10 +85,12 @@ jobs:
     # skipped the tests and the run stayed green with the evidence missing.
     # pytest exits 0 on a skip, so the summary is inspected rather than trusted
     # — the same shape `maintenance` uses for its branding job.
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          cache-suffix: ${{ github.workflow }}-${{ github.job }}-${{ strategy.job-index }}
       - name: Install locked environment
         run: uv sync --locked --all-groups
       - name: Run the exFAT suite, failing if any of it skips
@@ -100,6 +107,7 @@ jobs:
         run: uv run python scripts/check_exfat_mutation.py
 
   dependency-audit:
+    timeout-minutes: 15
     name: dependency audit
     runs-on: ubuntu-24.04
     steps:
@@ -108,10 +116,14 @@ jobs:
         with:
           python-version: "3.14"
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          cache-suffix: ${{ github.workflow }}-${{ github.job }}-${{ strategy.job-index }}
       - name: Install locked environment
         run: uv sync --locked --all-groups
       - name: Audit current advisories
-        run: uv run pip-audit
+        run: |
+          uv export --locked --all-groups --no-emit-project --format requirements-txt --output-file dependency-audit-requirements.txt
+          uv run pip-audit --requirement dependency-audit-requirements.txt --strict
 
   docs-links:
     timeout-minutes: 5
