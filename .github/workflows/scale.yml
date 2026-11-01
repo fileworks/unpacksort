@@ -2,8 +2,12 @@ name: Scale
 
 on:
   schedule:
-    - cron: "17 3 * * 0"
+    - cron: "17 3 1 * *"
   workflow_dispatch:
+
+concurrency:
+  group: scale-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -23,6 +27,8 @@ jobs:
         with:
           python-version: "3.14"
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          cache-suffix: ${{ github.workflow }}-${{ github.job }}-${{ strategy.job-index }}
       - name: Install locked development environment
         run: uv sync --locked --all-groups
       - name: Run bounded production-path tier

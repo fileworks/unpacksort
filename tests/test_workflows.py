@@ -178,7 +178,7 @@ def test_the_exfat_evidence_job_treats_a_skip_as_a_failure() -> None:
     assert isinstance(jobs, dict)
     job = jobs["exfat-evidence"]
 
-    assert job["runs-on"] == "macos-latest"
+    assert job["runs-on"] == "macos-26"
     body = "\n".join(str(step.get("run", "")) for step in job["steps"])
     assert "TestNoHardLinksOnRealFilesystem" in body
     assert "skipped" in body
