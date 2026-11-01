@@ -142,10 +142,11 @@ jobs:
       - name: dependency-audit
         if: inputs.audit
         working-directory: ${{ inputs.working-directory }}
+        shell: bash
         run: |
+          mkdir -p "$RUNNER_TEMP/dependency-audit"
           uv export --locked --all-extras --no-dev --no-emit-project \
-            --format requirements-txt \
-            --output-file dependency-audit-requirements.txt
+            --format pylock.toml \
+            --output-file "$RUNNER_TEMP/dependency-audit/pylock.toml" --quiet
           uvx --from pip-audit==2.9.0 pip-audit --version
-          uvx --from pip-audit==2.9.0 pip-audit \
-            --requirement dependency-audit-requirements.txt --strict
+          uvx --from pip-audit==2.9.0 pip-audit --locked "$RUNNER_TEMP/dependency-audit" --strict

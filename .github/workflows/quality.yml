@@ -118,12 +118,13 @@ jobs:
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           cache-suffix: ${{ github.workflow }}-${{ github.job }}-${{ strategy.job-index }}
-      - name: Install locked environment
-        run: uv sync --locked --all-groups
-      - name: Audit current advisories
+      - name: Audit every locked platform and runtime variant
         run: |
-          uv export --locked --all-groups --no-emit-project --format requirements-txt --output-file dependency-audit-requirements.txt
-          uv run pip-audit --requirement dependency-audit-requirements.txt --strict
+          mkdir -p "$RUNNER_TEMP/dependency-audit"
+          uv export --locked --all-groups --no-emit-project \
+            --format pylock.toml \
+            --output-file "$RUNNER_TEMP/dependency-audit/pylock.toml" --quiet
+          uvx --from pip-audit==2.9.0 pip-audit --locked "$RUNNER_TEMP/dependency-audit" --strict
 
   docs-links:
     timeout-minutes: 5

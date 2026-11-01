@@ -32,4 +32,6 @@ check names and separates concurrent uv cache writers by job/matrix cell.
 
 Full source and installed-wheel matrices run on PRs, main pushes, weekly schedules
 and manual dispatch. Static checks run once on Linux/Python 3.12. Dependency audits
-use the complete exported lock; scale tiers run monthly and on demand.
+use a portable PEP 751 lock export so every platform/runtime alternative is
+checked, including PyPy-only dependencies, without reinstalling packages.
+Scale tiers run monthly and on demand.
