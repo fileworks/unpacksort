@@ -40,8 +40,10 @@ Windows/macOS/Linux, updates and optional uv commands.
 The owner also has private prebuilt wheels through the
 [authenticated release guide](https://github.com/fileworks/private-releases#installation).
 Private wheels/tap require separate GitHub access; they are optional.
-On macOS, after [private tap setup](https://github.com/fileworks/homebrew-tap#install),
+On Apple Silicon Macs, after [private tap setup](https://github.com/fileworks/homebrew-tap#install),
 use `HOMEBREW_NO_AUTO_UPDATE=1 brew install fileworks/tap/unpacksort`.
+On Intel Macs, use the [verified wheel installer](https://github.com/fileworks/homebrew-tap#intel-mac-and-linux),
+which supplies Python and isolated tools through uv without Homebrew.
 PyPI and WinGet distribution are retired.
 
 ## Quick start
