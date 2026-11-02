@@ -8,7 +8,8 @@ No GitHub login, private notes or private downloads are needed.
 | Platform | Setup |
 |---|---|
 | Windows | Install [Python](https://www.python.org/downloads/windows/) 3.12+ and [Git](https://git-scm.com/downloads). In PowerShell run `py -m pip install --user pipx`, then `py -m pipx ensurepath`; reopen the terminal. |
-| macOS | With [Homebrew](https://brew.sh/) installed: `brew install python@3.12 pipx git`, then `pipx ensurepath`; reopen the terminal. |
+| Apple Silicon macOS | With [Homebrew](https://brew.sh/) installed: `brew install python@3.12 pipx git`, then `pipx ensurepath`; reopen the terminal. |
+| Intel macOS | Use the official [Python](https://www.python.org/downloads/macos/) 3.12 installer and Git, then `python3.12 -m pip install --user pipx` and `python3.12 -m pipx ensurepath`; alternatively use standalone uv below. Homebrew no longer supplies Intel bottles. |
 | Linux | Install Python 3.12+, Git and pipx using your supported distro packages, then `pipx ensurepath`. If the distro Python is older, install a supported Python first. |
 
 Confirm `pipx --version`, `git --version` and a Python 3.12+ interpreter.
@@ -42,6 +43,7 @@ then `uv tool update-shell` and reopen the terminal. Pick one tool manager.
 ## Optional private downloads
 
 Authorized accounts can use [private wheels](https://github.com/fileworks/private-releases#installation)
-or the [private macOS tap](https://github.com/fileworks/homebrew-tap#install).
+or the [private Apple Silicon tap](https://github.com/fileworks/homebrew-tap#install).
+Intel Macs can use the [verified wheel installer](https://github.com/fileworks/homebrew-tap#intel-mac-and-linux).
 Each repository grants access independently. A 404 usually means missing access
 or the wrong account; use the public source route when you do not have access.

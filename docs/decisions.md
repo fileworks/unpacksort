@@ -8,6 +8,7 @@ decision record. Missing private notes do not block ordinary work.
 
 | Date | Choice | Reason | Owning documentation |
 |---|---|---|---|
+| 2026-11-02 | Intel Macs use verified wheels; Homebrew installs target Apple Silicon | Avoid unsupported Intel Homebrew source builds while retaining native installation coverage | [installation](../README.md#install) |
 | 2026-11-01 | Audit the portable lock rather than host-filtered requirements | CPython audits skipped the vulnerable PyPy Brotli alternative; PEP 751 auditing covers all locked variants without dependency installation | [contributing](../CONTRIBUTING.md#ci-cadence) |
 | 2026-11-01 | Monthly scale and static checks once; full native matrices retained | Reduce repeated scale and static work; artifact E2E stays on every platform/interpreter and weekly full CI remains release evidence | [contributing](../CONTRIBUTING.md#ci-cadence) |
 | 2026-10-19 | Direct Python dependencies are exact pins; only deliberate sub-major caps stay ranges | Renovate offers only releases older than seven days, but `uv lock --upgrade-package` takes the newest release a range allows, which can still be soaking, and Renovate then fails the lane with an artifact error (renovatebot/renovate#41624; seen in fileworks/media-sorter #132). This is an end-user CLI installed through pipx or the tap, so exact pins also give installs the versions CI tested. `tests/test_dependency_pins.py` guards it. | [README](../README.md#development) |
