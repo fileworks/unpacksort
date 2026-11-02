@@ -163,7 +163,11 @@ def test_quality_workflow_has_cross_platform_version_and_artifact_gates() -> Non
         assert matrix["python"] == ["3.12", "3.13", "3.14"]
     text = (Path(".github/workflows") / "quality.yml").read_text(encoding="utf-8")
     assert "scripts/installed_e2e.py" in text
-    assert "uv run pip-audit" in text
+    assert "--format pylock.toml" in text
+    assert (
+        'uvx --from pip-audit==2.9.0 pip-audit --locked "$RUNNER_TEMP/dependency-audit" --strict'
+        in text
+    )
 
 
 def test_the_exfat_evidence_job_treats_a_skip_as_a_failure() -> None:
