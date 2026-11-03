@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2] (2026-11-03)
+
+### Fixed
+
+- Refresh pinned dependencies and portable dependency auditing.
+- Correct release asset validation for hidden build metadata and clarify native installation routes.
+
 ## [1.0.1] (2026-10-17)
 
 ### Security
